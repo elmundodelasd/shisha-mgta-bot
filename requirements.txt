@@ -1,5 +1,6 @@
 python-telegram-bot==20.7
-gspread
-google-auth
-pandas
-qrcode[pil]
+gspread==5.11.4
+google-auth==2.22.0
+google-api-python-client==2.108.0
+qrcode==7.4.2
+pillow==10.0.1
