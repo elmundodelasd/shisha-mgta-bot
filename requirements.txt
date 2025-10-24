@@ -4,3 +4,4 @@ google-auth==2.22.0
 google-api-python-client==2.108.0
 qrcode==7.4.2
 pillow>=10.4.0  # Fixed for Python 3.13 compatibility
+pandas==2.2.0
