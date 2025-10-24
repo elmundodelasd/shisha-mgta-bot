@@ -1,5 +1,5 @@
 python-telegram-bot==20.7
-gspread==5.11.4
+gspread==5.12.4
 google-auth==2.22.0
 google-api-python-client==2.108.0
 qrcode==7.4.2
