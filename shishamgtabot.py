@@ -3,7 +3,7 @@ import qrcode
 import uuid
 import asyncio
 import os
-import pandas as pd
+# import pandas as pd  # ← editado en github
 from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
@@ -1397,4 +1397,5 @@ if __name__ == "__main__":
     print("☁️ Listo para hosting 24/7")
     print("─" * 50)
     
+
     app.run_polling()
