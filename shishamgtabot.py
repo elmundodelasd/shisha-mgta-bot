@@ -3,29 +3,37 @@ import qrcode
 import uuid
 import asyncio
 import os
+import json
 from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 
 # Configuración
-CRED_PATH = os.getenv('GOOGLE_CRED_PATH', 'googlecred.json')
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8368178116:AAHQgckgQb8ODhZtA8zB-CmWy2tY4mQJXHs')
+SHEET_ID = os.getenv('GOOGLE_SHEET_ID', '1OWXnqnuFFLWex8Kohfg7zz47GXrl5ZdrvD8265Sdz5s')
 
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets',
          'https://www.googleapis.com/auth/drive']
 
 ADMIN_ID = '634092669'  # ✅ TU ID
 
-# Autenticación con Google Sheets
+# Autenticación con Google Sheets desde variables de entorno
 try:
-    creds = Credentials.from_service_account_file(CRED_PATH, scopes=SCOPE)
+    # Obtener credenciales desde variable de entorno de Railway
+    google_creds_json = os.getenv('GOOGLE_CREDENTIALS')
+    if not google_creds_json:
+        raise Exception("GOOGLE_CREDENTIALS no encontrada en variables de entorno")
+    
+    creds_dict = json.loads(google_creds_json)
+    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
     client = gspread.authorize(creds)
     
     # Conectar a las hojas actualizadas
-    sheet_registro = client.open("promo sellos bot").worksheet("registro_clientes")
-    sheet_vendedores = client.open("promo sellos bot").worksheet("Vendedores")
-    sheet_historial = client.open("promo sellos bot").worksheet("HistorialCompras")
+    spreadsheet = client.open_by_key(SHEET_ID)
+    sheet_registro = spreadsheet.worksheet("registro_clientes")
+    sheet_vendedores = spreadsheet.worksheet("Vendedores")
+    sheet_historial = spreadsheet.worksheet("HistorialCompras")
     
     print("✅ Conectado a Google Sheets (registro_clientes, Vendedores, HistorialCompras)")
     
