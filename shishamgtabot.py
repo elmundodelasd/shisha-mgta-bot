@@ -74,6 +74,11 @@ def limpiar_duplicados_vendedores():
             if len(fila) > 0 and fila[0]:
                 username = fila[0]
                 estado = fila[3] if len(fila) > 3 else 'SI'
+                
+                # ✅ PROTEGER AL ADMIN - NUNCA ELIMINAR
+                if username == ADMIN_ID:
+                    continue
+                    
                 if username in vendedores_unicos and estado == 'SI':
                     filas_a_eliminar.append(i + 2)  # ✅ +2 porque ahora empieza en fila 2
                 else:
@@ -147,6 +152,15 @@ async def obtener_vendedores_activos():
                 }
                 vendedores_activos.append(vendedor_data)
         
+        # ✅ AGREGAR AL ADMIN SIEMPRE COMO VENDEDOR ACTIVO
+        admin_ya_esta = any(v['user_id'] == ADMIN_ID for v in vendedores_activos)
+        if not admin_ya_esta:
+            vendedores_activos.append({
+                'user_id': ADMIN_ID,
+                'nombre': 'Alushi_1 (Admin)'
+            })
+            print("✅ Admin agregado como vendedor activo")
+        
         vendedores_cache['data'] = vendedores_activos
         vendedores_cache['timestamp'] = datetime.now()
         
@@ -166,6 +180,13 @@ async def es_vendedor(user_id: str) -> bool:
     vendedores = await obtener_vendedores_activos()
     return any(v['user_id'] == user_id for v in vendedores)
 
+async def es_vendedor_sin_admin(user_id: str) -> bool:
+    """Verifica si es vendedor común (EXCLUYE AL ADMIN)"""
+    if user_id == ADMIN_ID:
+        return False
+    vendedores = await obtener_vendedores_activos()
+    return any(v['user_id'] == user_id for v in vendedores)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja el comando /start con diferentes parámetros"""
     user_id = str(update.effective_user.id)
@@ -178,11 +199,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await procesar_compra_qr(update, user_id, comando)
                 return
         
+        # ✅ ADMIN TIENE ACCESO A TODO
         if await es_admin(user_id):
-            await mostrar_teclado_admin(update)
+            await mostrar_teclado_admin_completo(update)
             return
             
-        if await es_vendedor(user_id):
+        # ✅ VENDEDORES COMUNES SOLO PANEL VENDEDOR (NO COMPRAS)
+        if await es_vendedor_sin_admin(user_id):
             await mostrar_teclado_vendedor(update)
             return
         
@@ -192,13 +215,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"❌ Error en start: {e}")
         await update.message.reply_text("⚠️ Error temporal. Por favor, intenta nuevamente.")
 
+async def mostrar_teclado_admin_completo(update: Update):
+    """Muestra teclado con TODAS las funciones (Admin + Vendedor + Cliente)"""
+    keyboard = [
+        [KeyboardButton("👤 AGREGAR VENDEDOR"), KeyboardButton("🚫 ELIMINAR VENDEDOR")],
+        [KeyboardButton("📋 LISTAR VENDEDORES"), KeyboardButton("📊 ESTADÍSTICAS")],
+        [KeyboardButton("🏆 RANKING VENDEDORES"), KeyboardButton("👥 VER CLIENTES")],
+        [KeyboardButton("💰 MIS VENTAS"), KeyboardButton("🛒 COMPRAS")],
+        [KeyboardButton("📊 MIS SELLOS"), KeyboardButton("📋 MI HISTORIAL")],
+        [KeyboardButton("📞 CONTACTAR"), KeyboardButton("🏠 INICIO")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    mensaje = "👑 PANEL ADMIN COMPLETO - Shisha MGTA\n(Tienes acceso a todas las funciones)"
+    
+    await update.message.reply_text(mensaje, reply_markup=reply_markup)
+
 async def mostrar_teclado_admin(update: Update):
     """Muestra teclado personalizado para admin"""
     keyboard = [
         [KeyboardButton("👤 AGREGAR VENDEDOR"), KeyboardButton("🚫 ELIMINAR VENDEDOR")],
         [KeyboardButton("📋 LISTAR VENDEDORES"), KeyboardButton("📊 ESTADÍSTICAS")],
         [KeyboardButton("🏆 RANKING VENDEDORES"), KeyboardButton("👥 VER CLIENTES")],
-        [KeyboardButton("💰 MIS VENTAS"), KeyboardButton("🏠 INICIO")]
+        [KeyboardButton("💰 MIS VENTAS"), KeyboardButton("📞 CONTACTAR")],
+        [KeyboardButton("🏠 INICIO")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -210,6 +250,7 @@ async def mostrar_teclado_vendedor(update: Update):
     """Muestra teclado personalizado para vendedores"""
     keyboard = [
         [KeyboardButton("👥 VER CLIENTES"), KeyboardButton("💰 MIS VENTAS")],
+        [KeyboardButton("📞 CONTACTAR ADMIN")],
         [KeyboardButton("🏠 INICIO")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -227,12 +268,14 @@ async def mostrar_menu_principal(update: Update, user_id: str, nombre: str):
             keyboard = [
                 [KeyboardButton("🛒 COMPRAS"), KeyboardButton("📊 MIS SELLOS")],
                 [KeyboardButton("📋 MI HISTORIAL"), KeyboardButton("ℹ️ INFORMACIÓN")],
+                [KeyboardButton("📞 CONTACTAR")],
                 [KeyboardButton("🏠 INICIO")]
             ]
             mensaje = f"👋 ¡Hola {nombre}! - Shisha MGTA"
         else:
             keyboard = [
                 [KeyboardButton("📝 REGISTRARME"), KeyboardButton("ℹ️ INFORMACIÓN")],
+                [KeyboardButton("📞 CONTACTAR")],
                 [KeyboardButton("🏠 INICIO")]
             ]
             mensaje = f"👋 ¡Hola {nombre}! - Shisha MGTA"
@@ -243,6 +286,22 @@ async def mostrar_menu_principal(update: Update, user_id: str, nombre: str):
     except Exception as e:
         print(f"❌ Error mostrando menú: {e}")
         await update.message.reply_text("¡Bienvenido! Usa /registro para unirte.")
+
+async def manejar_contacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja el botón de contacto"""
+    user_id = str(update.effective_user.id)
+    nombre = update.effective_user.first_name or "Usuario"
+    
+    mensaje_contacto = (
+        f"📞 **Contacta al Administrador**\n\n"
+        f"👤 **Tu nombre:** {nombre}\n"
+        f"🆔 **Tu ID:** `{user_id}`\n\n"
+        f"💬 **Para ayuda o consultas:**\n"
+        f"👉 @Alushi_1\n\n"
+        f"📱 Contacta directamente al admin"
+    )
+    
+    await update.message.reply_text(mensaje_contacto)
 
 async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los botones del menú"""
@@ -328,6 +387,9 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
     
     elif texto == "📝 REGISTRARME":
         await registro_directo(update, context)
+    
+    elif texto == "📞 CONTACTAR" or texto == "📞 CONTACTAR ADMIN":
+        await manejar_contacto(update, context)
     
     elif texto == "🏠 INICIO":
         await start(update, context)
@@ -494,12 +556,12 @@ async def registrar_usuario(update: Update, user_id: str, nombre: str):
         
         nombre_completo = f"{first_name} {last_name}".strip()
         await update.message.reply_text(
-            f"🎉 **¡Registro exitoso, {nombre_completo}!**\n\n"
+            f"🎉 **¡Bienvenidos a la Tarjeta de Promociones de Shisha_Mgta!**\n\n"
             f"✅ Ahora participas en nuestro programa de fidelidad\n"
             f"🏺 Cada compra de arguile = 1 sello\n"
             f"💰 10 sellos = 50% de descuento\n\n"
             f"📱 **Para comprar:**\n"
-            f"• Usa el botón 🛒 COMPRAS\n"
+            f"• Usa 🛒 COMPRAS\n"
             f"• Selecciona tu vendedor\n"
             f"• ¡Escanea el QR y listo!"
         )
@@ -512,6 +574,16 @@ async def registrar_usuario(update: Update, user_id: str, nombre: str):
 async def registro_directo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando directo /registro"""
     user_id = str(update.effective_user.id)
+    
+    # ✅ BLOQUEAR VENDEDORES ACTIVOS DE REGISTRARSE COMO CLIENTES
+    if await es_vendedor_sin_admin(user_id):
+        await update.message.reply_text(
+            "❌ **No puedes registrarte como cliente**\n\n"
+            "Eres un vendedor activo del sistema.\n"
+            "Si deseas ser cliente, primero debes ser eliminado como vendedor."
+        )
+        return
+    
     nombre = update.effective_user.first_name or "Cliente"
     await registrar_usuario(update, user_id, nombre)
 
@@ -521,6 +593,11 @@ async def solicitar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nombre_cliente = update.effective_user.first_name or "Cliente"
     
     try:
+        # ✅ BLOQUEAR VENDEDORES COMUNES (EXCEPTO ADMIN)
+        if await es_vendedor_sin_admin(user_id):
+            await update.message.reply_text("❌ **Los vendedores no pueden realizar compras**\n\nSolo los clientes registrados pueden usar esta función.")
+            return
+        
         celda = sheet_registro.find(user_id)
         if not celda:
             await update.message.reply_text("🔐 **Primero debes registrarte**\n\nUsa 📝 REGISTRARME")
@@ -1006,7 +1083,18 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                     1,
                     vendedor_actual
                 ])
-                mensaje_bienvenida = f"🎉 **¡Bienvenido {nombre_cliente}!**\nTe hemos registrado automáticamente.\n\n"
+                
+                # ✅ MENSAJE DE BIENVENIDA MEJORADO (registro automático)
+                await update.message.reply_text(
+                    f"🎉 **¡Bienvenidos a la Tarjeta de Promociones de Shisha_Mgta!**\n\n"
+                    f"✅ Ahora participas en nuestro programa de fidelidad\n"
+                    f"🏺 Cada compra de arguile = 1 sello\n"
+                    f"💰 10 sellos = 50% de descuento\n\n"
+                    f"📱 **Para comprar:**\n"
+                    f"• Usa 🛒 COMPRAS\n"
+                    f"• Selecciona tu vendedor\n"
+                    f"• ¡Escanea el QR y listo!"
+                )
                 sellos_actual = 1
             else:
                 fila = celda.row
@@ -1020,7 +1108,6 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                 
                 sheet_registro.update_cell(fila, 4, nuevos_sellos)
                 sheet_registro.update_cell(fila, 5, vendedor_actual)
-                mensaje_bienvenida = ""
                 sellos_actual = nuevos_sellos
             
             # Guardar en historial
@@ -1073,7 +1160,6 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
             if sellos_actual >= 10:
                 sheet_registro.update_cell(celda_actualizada.row, 4, 0)
                 await update.message.reply_text(
-                    f"{mensaje_bienvenida}"
                     "🎉 **¡FELICIDADES!** 🎉\n\n"
                     "🏺 **Has completado 10 compras en Shisha MGTA**\n\n"
                     "💰 **PREMIO:** 50% DE DESCUENTO\n"
@@ -1084,7 +1170,6 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                 print(f"🎉 Usuario {user_id} ganó 50% descuento")
             else:
                 await update.message.reply_text(
-                    f"{mensaje_bienvenida}"
                     f"✅ **Compra registrada exitosamente**\n\n"
                     f"🏺 Shisha MGTA agradece tu compra\n\n"
                     f"📊 **Sellos acumulados:** {sellos_actual}/10\n"
@@ -1421,4 +1506,3 @@ if __name__ == "__main__":
     
 
     app.run_polling()
-
