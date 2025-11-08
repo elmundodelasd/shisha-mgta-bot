@@ -304,19 +304,19 @@ async def mostrar_menu_principal(update: Update, user_id: str, nombre: str):
         
         if celda:
             keyboard = [
-                [KeyboardButton("🛒 COMPRAS"), KeyboardButton("📊 MIS SELLOS")],
+                [KeyboardButton("🛒 COMPRAR AHORA"), KeyboardButton("📊 MIS SELLOS")],
                 [KeyboardButton("📋 MI HISTORIAL"), KeyboardButton("ℹ️ INFORMACIÓN")],
                 [KeyboardButton("📞 CONTACTAR")],
                 [KeyboardButton("🏠 INICIO")]
             ]
-            mensaje = f"👋 ¡Hola {nombre}! - Shisha MGTA"
+            mensaje = f"👋 ¡Hola {nombre}! - Shisha MGTA\n\n¡Estás listo para acumular sellos!"
         else:
             keyboard = [
                 [KeyboardButton("📝 REGISTRARME"), KeyboardButton("ℹ️ INFORMACIÓN")],
                 [KeyboardButton("📞 CONTACTAR")],
                 [KeyboardButton("🏠 INICIO")]
             ]
-            mensaje = f"👋 ¡Hola {nombre}! - Shisha MGTA"
+            mensaje = f"👋 ¡Hola {nombre}! - Shisha MGTA\n\nRegístrate para empezar a acumular sellos"
         
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(mensaje, reply_markup=reply_markup)
@@ -324,6 +324,25 @@ async def mostrar_menu_principal(update: Update, user_id: str, nombre: str):
     except Exception as e:
         print(f"❌ Error mostrando menú: {e}")
         await update.message.reply_text("¡Bienvenido! Usa /registro para unirte.")
+
+async def mostrar_menu_compra_directa(update: Update, nombre: str):
+    """Muestra menú con botón de compra directa después del registro"""
+    keyboard = [
+        [KeyboardButton("🛒 COMPRAR AHORA"), KeyboardButton("📊 MIS SELLOS")],
+        [KeyboardButton("📋 MI HISTORIAL"), KeyboardButton("ℹ️ INFORMACIÓN")],
+        [KeyboardButton("📞 CONTACTAR")],
+        [KeyboardButton("🏠 INICIO")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    mensaje = (
+        f"🎉 ¡Bienvenido {nombre}! - Shisha MGTA\n\n"
+        f"✅ Ya estás registrado en nuestro programa de fidelidad\n\n"
+        f"🏆 **¡Haz tu primera compra ahora!**\n"
+        f"Usa el botón 🛒 COMPRAR AHORA para empezar a acumular sellos"
+    )
+    
+    await update.message.reply_text(mensaje, reply_markup=reply_markup)
 
 async def manejar_contacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja el botón de contacto"""
@@ -388,14 +407,14 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
     elif texto == "📊 ESTADÍSTICAS":
         if await es_admin(user_id):
             estadisticas = await obtener_estadisticas_completas()
-            await update.message.reply_text(estadisticas)  # ✅ SIN parse_mode='Markdown'
+            await update.message.reply_text(estadisticas)
         else:
             await update.message.reply_text("❌ Solo administradores pueden ver estadísticas completas.")
     
     elif texto == "🏆 RANKING VENDEDORES":
         if await es_admin(user_id):
             ranking = await generar_ranking_detallado()
-            await update.message.reply_text(ranking)  # ✅ SIN parse_mode='Markdown'
+            await update.message.reply_text(ranking)
         else:
             await update.message.reply_text("❌ Solo administradores pueden ver rankings.")
     
@@ -411,7 +430,7 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
         else:
             await update.message.reply_text("❌ Solo vendedores y administradores pueden ver ventas.")
     
-    elif texto == "🛒 COMPRAS":
+    elif texto == "🛒 COMPRAS" or texto == "🛒 COMPRAR AHORA":
         await solicitar_compra(update, context)
     
     elif texto == "📊 MIS SELLOS":
@@ -628,7 +647,7 @@ async def manejar_eliminar_vendedor(update: Update, context: ContextTypes.DEFAUL
         await query.edit_message_text("❌ Error eliminando vendedor.")
 
 async def registrar_usuario(update: Update, user_id: str, nombre: str):
-    """Registra un nuevo usuario en el sistema"""
+    """Registra un nuevo usuario en el sistema - MEJORADO"""
     try:
         if not sheet_registro:
             await update.message.reply_text("❌ Error del sistema. Intenta más tarde.")
@@ -643,6 +662,11 @@ async def registrar_usuario(update: Update, user_id: str, nombre: str):
         last_name = update.effective_user.last_name or ""
         username = f"@{update.effective_user.username}" if update.effective_user.username else ""
         
+        # Mejorar captura del nombre
+        nombre_completo = f"{first_name} {last_name}".strip()
+        if not nombre_completo or nombre_completo == " ":
+            nombre_completo = nombre
+        
         sheet_registro.append_row([
             user_id,
             username,
@@ -651,17 +675,18 @@ async def registrar_usuario(update: Update, user_id: str, nombre: str):
             ""
         ])
         
-        nombre_completo = f"{first_name} {last_name}".strip()
+        # ✅ MENSAJE MEJORADO + BOTÓN COMPRA DIRECTA
         await update.message.reply_text(
-            f"🎉 **¡Bienvenidos a la Tarjeta de Promociones de Shisha_Mgta!**\n\n"
+            f"🎉 **¡Bienvenido a la Tarjeta de Promociones de Shisha_Mgta!**\n\n"
             f"✅ Ahora participas en nuestro programa de fidelidad\n"
-            f"🏺 Cada compra de arguile = 1 sello\n"
+            f"🏺 Cada compra = 1 sello\n"
             f"💰 10 sellos = 50% de descuento\n\n"
-            f"📱 **Para comprar:**\n"
-            f"• Usa 🛒 COMPRAS\n"
-            f"• Selecciona tu vendedor\n"
-            f"• ¡Escanea el QR y listo!"
+            f"📱 **¡Haz tu primera compra ahora!**\n"
+            f"Usa el botón 🛒 COMPRAR AHORA para empezar a acumular sellos"
         )
+        
+        # Mostrar menú con botón de compra directa
+        await mostrar_menu_compra_directa(update, nombre_completo)
         print(f"✅ Nuevo usuario registrado: {nombre_completo} ({user_id})")
         
     except Exception as e:
@@ -826,6 +851,7 @@ async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE,
             f"📱 **Usuario:** {user_id_cliente}\n"
             f"📊 **Sellos actuales:** {sellos_actual}/10\n"
             f"🎯 **Faltan para premio:** {10 - sellos_actual}\n"
+            f"💰 **Valor venta:** $12\n"
             f"⏰ **Hora:** {datetime.now().strftime('%H:%M:%S')}\n"
             f"🔒 **Válido por:** 10 minutos\n\n"
             f"📋 **INSTRUCCIONES:**\n"
@@ -1058,7 +1084,7 @@ async def clientes_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error obteniendo datos de clientes.")
 
 async def compras_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra estadísticas del vendedor - CORREGIDO"""
+    """Muestra estadísticas del vendedor - CORREGIDO CON $12"""
     user_id = str(update.effective_user.id)
     
     if not await es_vendedor(user_id) and not await es_admin(user_id):
@@ -1120,8 +1146,8 @@ async def compras_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• Ventas totales: {total_ventas_general}\n"
                 f"• Eficiencia: {(total_ventas_vendedor/total_ventas_general*100) if total_ventas_general > 0 else 0:.1f}%\n\n"
                 f"💰 **Ingresos estimados:**\n"
-                f"• Tus ventas: ${total_ventas_vendedor * 10:,}\n"
-                f"• Total sistema: ${total_ventas_general * 10:,}"
+                f"• Tus ventas: ${total_ventas_vendedor * 12:,}\n"
+                f"• Total sistema: ${total_ventas_general * 12:,}"
             )
         else:
             mensaje = (
@@ -1132,7 +1158,7 @@ async def compras_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📊 **Ventas hoy:** {ventas_hoy}\n"
                 f"📈 **Eficiencia:** {(total_ventas_vendedor/total_ventas_general*100) if total_ventas_general > 0 else 0:.1f}%\n\n"
                 f"💰 **Mis ingresos estimados:**\n"
-                f"${total_ventas_vendedor * 10:,}"
+                f"${total_ventas_vendedor * 12:,}"
             )
         
         await update.message.reply_text(mensaje)
@@ -1199,12 +1225,10 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                 await update.message.reply_text(
                     f"🎉 **¡Bienvenidos a la Tarjeta de Promociones de Shisha_Mgta!**\n\n"
                     f"✅ Ahora participas en nuestro programa de fidelidad\n"
-                    f"🏺 Cada compra de arguile = 1 sello\n"
+                    f"🏺 Cada compra = 1 sello\n"
                     f"💰 10 sellos = 50% de descuento\n\n"
-                    f"📱 **Para comprar:**\n"
-                    f"• Usa 🛒 COMPRAS\n"
-                    f"• Selecciona tu vendedor\n"
-                    f"• ¡Escanea el QR y listo!"
+                    f"📱 **¡Haz tu primera compra ahora!**\n"
+                    f"Usa el botón 🛒 COMPRAR AHORA para empezar a acumular sellos"
                 )
                 sellos_actual = 1
             else:
@@ -1244,6 +1268,7 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                         f"📱 ID: {user_id}\n"
                         f"🏺 Sello sumado: +1\n"
                         f"📊 Total acumulado: {sellos_actual}/10 sellos\n"
+                        f"💰 Valor venta: $12\n"
                         f"⏰ Hora: {datetime.now().strftime('%H:%M:%S')}\n\n"
                         f"¡Venta registrada exitosamente! 🎉"
                     )
@@ -1274,7 +1299,7 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                     "🎉 **¡FELICIDADES!** 🎉\n\n"
                     "🏺 **Has completado 10 compras en Shisha MGTA**\n\n"
                     "💰 **PREMIO:** 50% DE DESCUENTO\n"
-                    "en tu próxima compra de arguile\n\n"
+                    "en tu próxima compra\n\n"
                     "📱 Muestra este mensaje al hacer tu pedido\n"
                     "¡Gracias por tu preferencia!"
                 )
@@ -1285,7 +1310,7 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                     f"🏺 Shisha MGTA agradece tu compra\n\n"
                     f"📊 **Sellos acumulados:** {sellos_actual}/10\n"
                     f"🎯 **Te faltan:** {10 - sellos_actual}\n\n"
-                    f"¡Sigue disfrutando de nuestros arguiles de calidad!"
+                    f"¡Sigue disfrutando de nuestros servicios!"
                 )
             
             del codigos_activos[codigo_qr]
@@ -1299,7 +1324,7 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
         await update.message.reply_text("❌ Error procesando compra.")
 
 async def sellos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra los sellos actuales del usuario - MENSAJE MEJORADO"""
+    """Muestra los sellos actuales del usuario - MEJORADO SIN PRECIOS"""
     user_id = str(update.effective_user.id)
     
     try:
@@ -1312,12 +1337,12 @@ async def sellos(update: Update, context: ContextTypes.DEFAULT_TYPE):
             datos = sheet_registro.row_values(celda.row)
             sellos_actual = int(datos[3]) if len(datos) > 3 and datos[3] else 0
             
-            # ✅ MENSAJE MEJORADO
+            # ✅ MENSAJE MEJORADO SIN PRECIOS
             await update.message.reply_text(
                 f"📊 Tu progreso en Shisha MGTA\n\n"
                 f"🏺 Sellos acumulados: {sellos_actual}/10\n"
                 f"🎯 Te faltan {10 - sellos_actual} sellos para tu 50% de descuento\n\n"
-                f"¡Sigue comprando nuestros arguiles!"
+                f"¡Sigue comprando para ganar tu premio!"
             )
         else:
             await update.message.reply_text(
@@ -1329,12 +1354,12 @@ async def sellos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error consultando sellos.")
 
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra información del programa"""
+    """Muestra información del programa - SIN PRECIOS"""
     mensaje = (
         "🏺 **Shisha MGTA - Programa de Fidelidad**\n\n"
         "💎 **Cómo funciona:**\n"
         "1. Regístrate con 📝 REGISTRARME\n"
-        "2. Usa 🛒 COMPRAS y selecciona tu vendedor\n"
+        "2. Usa 🛒 COMPRAR AHORA y selecciona tu vendedor\n"
         "3. El vendedor recibirá tu QR automáticamente\n"
         "4. Escanea el QR con tu cámara\n"
         "5. ¡Acumula 1 sello por compra!\n"
@@ -1397,7 +1422,7 @@ async def historial_cliente(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error obteniendo historial.")
 
 async def generar_ranking_detallado():
-    """🏆 GENERA RANKING DETALLADO DE VENDEDORES - CORREGIDO SIN MARKDOWN"""
+    """🏆 GENERA RANKING DETALLADO DE VENDEDORES - ACTUALIZADO CON $12"""
     try:
         if not sheet_historial or not sheet_vendedores:
             return "📊 RANKING VENDEDORES\n❌ No hay datos disponibles"
@@ -1442,7 +1467,7 @@ async def generar_ranking_detallado():
                                 key=lambda x: x[1]['ventas'], 
                                 reverse=True)
         
-        # 📝 CONSTRUIR RANKING - SIN MARKDOWN PROBLEMÁTICO
+        # 📝 CONSTRUIR RANKING
         mensaje_ranking = "🏆 TOP VENDEDORES\n\n"
         
         emojis_podio = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
@@ -1461,7 +1486,8 @@ async def generar_ranking_detallado():
                 f"   📦 {ventas} ventas | "
                 f"👥 {clientes_unicos} clientes\n"
                 f"   🏷️ {sellos} sellos | "
-                f"📊 {eficiencia:.1f} vta/cli\n\n"
+                f"📊 {eficiencia:.1f} vta/cli\n"
+                f"   💰 ${ventas * 12:,} ingresos\n\n"
             )
         
         # 📈 RESUMEN DEL RANKING
@@ -1473,11 +1499,12 @@ async def generar_ranking_detallado():
         mensaje_ranking += f"• Total ventas: {total_ventas_ranking}\n"
         mensaje_ranking += f"• Vendedores activos: {total_vendedores_ranking}\n"
         mensaje_ranking += f"• Promedio: {promedio_ventas:.1f} ventas/vendedor\n"
+        mensaje_ranking += f"• Ingresos totales: ${total_ventas_ranking * 12:,}\n"
         
         # 🎯 MEJOR VENDEDOR
         if ranking_ordenado:
             mejor_vendedor = ranking_ordenado[0]
-            mensaje_ranking += f"• 🏅 Mejor: {mejor_vendedor[0]} ({mejor_vendedor[1]['ventas']} ventas)"
+            mensaje_ranking += f"• 🏅 Mejor: {mejor_vendedor[0]} ({mejor_vendedor[1]['ventas']} ventas = ${mejor_vendedor[1]['ventas'] * 12:,})"
         
         return mensaje_ranking
         
@@ -1485,7 +1512,7 @@ async def generar_ranking_detallado():
         return f"📊 RANKING VENDEDORES\n❌ Error: {str(e)}"
 
 async def obtener_estadisticas_completas():
-    """📊 ESTADÍSTICAS COMPLETAS DEL SISTEMA - CORREGIDO SIN MARKDOWN"""
+    """📊 ESTADÍSTICAS COMPLETAS DEL SISTEMA - ACTUALIZADO CON $12"""
     try:
         if not sheet_registro or not sheet_vendedores or not sheet_historial:
             return "❌ Error de conexión con Google Sheets"
@@ -1547,7 +1574,7 @@ async def obtener_estadisticas_completas():
                 if len(venta) > 1 and venta[1].startswith(hoy):
                     ventas_hoy += 1
         
-        # 📝 CONSTRUIR MENSAJE COMPLETO - SIN MARKDOWN PROBLEMÁTICO
+        # 📝 CONSTRUIR MENSAJE COMPLETO
         estadisticas = f"""
 🏆 ESTADÍSTICAS COMPLETAS - SHISHA MGTA
 
@@ -1562,7 +1589,7 @@ async def obtener_estadisticas_completas():
 • Total sellos: {total_sellos}
 • Ventas totales: {total_ventas}
 • Ventas hoy: {ventas_hoy}
-• Ingresos estimados: ${total_sellos * 10:,}
+• Ingresos estimados: ${total_ventas * 12:,}
 
 👨‍💼 VENDEDORES
 • Total en sistema: {total_vendedores}
@@ -1573,7 +1600,7 @@ async def obtener_estadisticas_completas():
 
 🔮 PROYECCIONES
 • Premios próximos: {clientes_cerca_premio} clientes
-• Ingreso/día: ${(ventas_hoy * 10):,}
+• Ingreso/día: ${(ventas_hoy * 12):,}
 • Ritmo: {ventas_hoy} ventas/hoy
 
 ⏰ Actualizado: {datetime.now().strftime('%H:%M:%S')}
@@ -1614,10 +1641,12 @@ if __name__ == "__main__":
     
     print("🚀 Shisha MGTA Bot - INICIADO")
     print("✅ FUNCIONALIDADES ACTIVAS:")
-    print("   • 📊 Estadísticas completas SIN errores Markdown")
+    print("   • 💰 Precios actualizados a $12")
+    print("   • 🛒 Botón COMPRAR AHORA para clientes")
+    print("   • 📊 Estadísticas completas con $12")
     print("   • 🔔 Notificación al vendedor después del escaneo")
     print("   • 📋 Historial de compras")
-    print("   • 🏆 Ranking de vendedores FUNCIONANDO")
+    print("   • 🏆 Ranking de vendedores con ingresos $12")
     print("   • 👑 Panel admin completo CON RESET")
     print("   • 💰 MIS VENTAS corregido para vendedores")
     print("   • 🔄 BOTÓN RESET SYSTEM para admin")
