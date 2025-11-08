@@ -350,14 +350,14 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
     elif texto == "📊 ESTADÍSTICAS":
         if await es_admin(user_id):
             estadisticas = await obtener_estadisticas_completas()
-            await update.message.reply_text(estadisticas, parse_mode='Markdown')
+            await update.message.reply_text(estadisticas)  # ✅ SIN parse_mode='Markdown'
         else:
             await update.message.reply_text("❌ Solo administradores pueden ver estadísticas completas.")
     
     elif texto == "🏆 RANKING VENDEDORES":
         if await es_admin(user_id):
             ranking = await generar_ranking_detallado()
-            await update.message.reply_text(ranking, parse_mode='Markdown')
+            await update.message.reply_text(ranking)  # ✅ SIN parse_mode='Markdown'
         else:
             await update.message.reply_text("❌ Solo administradores pueden ver rankings.")
     
@@ -808,7 +808,7 @@ async def agregar_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         
         if vendedores_cache['data']:
-            vendedores_cache['data'].append(nuevo_vendedor_data)
+            vendedores_cache['data'] = [nuevo_vendedor_data]
         else:
             vendedores_cache['data'] = [nuevo_vendedor_data]
         
@@ -961,7 +961,7 @@ async def clientes_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error obteniendo datos de clientes.")
 
 async def compras_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra estadísticas del vendedor"""
+    """Muestra estadísticas del vendedor - CORREGIDO"""
     user_id = str(update.effective_user.id)
     
     if not await es_vendedor(user_id) and not await es_admin(user_id):
@@ -969,63 +969,77 @@ async def compras_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        if not sheet_registro:
+        if not sheet_historial:
             await update.message.reply_text("❌ Error de conexión con Google Sheets.")
             return
         
-        todos_datos = sheet_registro.get_all_values()
+        # Obtener nombre del vendedor actual
+        vendedores = await obtener_vendedores_activos()
+        vendedor_actual = next((v for v in vendedores if v['user_id'] == user_id), None)
         
-        if len(todos_datos) <= 1:
-            await update.message.reply_text("📈 **MIS ESTADÍSTICAS**\n\n📭 No hay datos de ventas aún.")
+        if not vendedor_actual:
+            await update.message.reply_text("❌ No se encontró tu información de vendedor.")
             return
         
-        headers = todos_datos[0]
-        datos_clientes = todos_datos[1:]
+        nombre_vendedor = vendedor_actual['nombre']
         
-        total_clientes = len(datos_clientes)
+        # Obtener datos del historial
+        datos_historial = sheet_historial.get_all_values()
         
-        total_sellos = 0
-        for cliente in datos_clientes:
-            if len(cliente) > 3 and cliente[3]:
-                try:
-                    total_sellos += int(cliente[3])
-                except:
-                    pass
+        if len(datos_historial) <= 1:
+            if await es_admin(user_id):
+                await update.message.reply_text("📈 **MIS ESTADÍSTICAS - ADMIN**\n\n📭 No hay ventas registradas aún.")
+            else:
+                await update.message.reply_text("📈 **MIS ESTADÍSTICAS**\n\n📭 No hay ventas registradas aún.")
+            return
+        
+        headers = datos_historial[0]
+        datos_ventas = datos_historial[1:]
+        
+        # Filtrar ventas por vendedor actual
+        ventas_vendedor = [venta for venta in datos_ventas if len(venta) > 2 and venta[2] == nombre_vendedor]
+        
+        # Estadísticas generales
+        total_ventas_general = len(datos_ventas)
+        total_ventas_vendedor = len(ventas_vendedor)
+        
+        # Clientes únicos del vendedor
+        clientes_unicos = set()
+        for venta in ventas_vendedor:
+            if len(venta) > 0 and venta[0]:
+                clientes_unicos.add(venta[0])
+        
+        # Ventas de hoy
+        hoy = datetime.now().strftime("%Y-%m-%d")
+        ventas_hoy = len([v for v in ventas_vendedor if len(v) > 1 and v[1].startswith(hoy)])
         
         if await es_admin(user_id):
             mensaje = (
                 f"📈 **ESTADÍSTICAS GENERALES - ADMIN**\n\n"
-                f"👥 **Total clientes registrados:** {total_clientes}\n"
-                f"🏷️ **Total ventas registradas:** {total_sellos}\n"
-                f"💰 **Estimado ingresos:** ${total_sellos * 50000:,}\n\n"
-                f"💡 *Basado en 50,000 por arguile*"
+                f"📦 **Tus ventas registradas:** {total_ventas_vendedor}\n"
+                f"👥 **Tus clientes únicos:** {len(clientes_unicos)}\n"
+                f"📊 **Ventas hoy:** {ventas_hoy}\n\n"
+                f"🏢 **Totales del sistema:**\n"
+                f"• Ventas totales: {total_ventas_general}\n"
+                f"• Eficiencia: {(total_ventas_vendedor/total_ventas_general*100) if total_ventas_general > 0 else 0:.1f}%\n\n"
+                f"💰 **Ingresos estimados:**\n"
+                f"• Tus ventas: ${total_ventas_vendedor * 10:,}\n"
+                f"• Total sistema: ${total_ventas_general * 10:,}"
             )
         else:
-            clientes_vendedor = 0
-            ventas_vendedor = 0
-            
-            for cliente in datos_clientes:
-                if len(cliente) > 4 and str(cliente[4]) == user_id:
-                    clientes_vendedor += 1
-                    if len(cliente) > 3 and cliente[3]:
-                        try:
-                            ventas_vendedor += int(cliente[3])
-                        except:
-                            pass
-            
             mensaje = (
                 f"📈 **MIS ESTADÍSTICAS**\n\n"
-                f"🛒 **Ventas registradas:** {ventas_vendedor}\n"
-                f"👥 **Mis clientes:** {clientes_vendedor}\n"
-                f"💰 **Mis ventas estimadas:** ${ventas_vendedor * 50000:,}\n\n"
-                f"📊 **Totales generales:**\n"
-                f"• Clientes: {total_clientes}\n"
-                f"• Ventas: {total_sellos}\n\n"
-                f"💡 *Basado en 50,000 por arguile*"
+                f"👤 **Vendedor:** {nombre_vendedor}\n"
+                f"📦 **Ventas registradas:** {total_ventas_vendedor}\n"
+                f"👥 **Clientes únicos:** {len(clientes_unicos)}\n"
+                f"📊 **Ventas hoy:** {ventas_hoy}\n"
+                f"📈 **Eficiencia:** {(total_ventas_vendedor/total_ventas_general*100) if total_ventas_general > 0 else 0:.1f}%\n\n"
+                f"💰 **Mis ingresos estimados:**\n"
+                f"${total_ventas_vendedor * 10:,}"
             )
         
         await update.message.reply_text(mensaje)
-        print(f"📊 {user_id} consultó estadísticas")
+        print(f"📊 {user_id} consultó estadísticas de ventas")
         
     except Exception as e:
         print(f"❌ Error en comando compras vendedor: {e}")
@@ -1286,16 +1300,16 @@ async def historial_cliente(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error obteniendo historial.")
 
 async def generar_ranking_detallado():
-    """🏆 GENERA RANKING DETALLADO DE VENDEDORES"""
+    """🏆 GENERA RANKING DETALLADO DE VENDEDORES - CORREGIDO SIN MARKDOWN"""
     try:
         if not sheet_historial or not sheet_vendedores:
-            return "📊 **RANKING VENDEDORES**\n❌ No hay datos disponibles"
+            return "📊 RANKING VENDEDORES\n❌ No hay datos disponibles"
         
         datos_historial = sheet_historial.get_all_values()
         datos_vendedores = sheet_vendedores.get_all_values()
         
         if len(datos_historial) <= 1:
-            return "📊 **RANKING VENDEDORES**\n📭 No hay ventas registradas"
+            return "📊 RANKING VENDEDORES\n📭 No hay ventas registradas"
         
         # 🎯 ESTADÍSTICAS POR VENDEDOR
         stats_vendedores = {}
@@ -1331,13 +1345,13 @@ async def generar_ranking_detallado():
                                 key=lambda x: x[1]['ventas'], 
                                 reverse=True)
         
-        # 📝 CONSTRUIR RANKING
-        mensaje_ranking = "🏆 **TOP VENDEDORES**\n\n"
+        # 📝 CONSTRUIR RANKING - SIN MARKDOWN PROBLEMÁTICO
+        mensaje_ranking = "🏆 TOP VENDEDORES\n\n"
         
         emojis_podio = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         
         for i, (vendedor, stats) in enumerate(ranking_ordenado[:10]):  # Top 10
-            emoji = emojis_podio[i] if i < len(emojis_podio) else f"{i+1}️⃣"
+            emoji = emojis_podio[i] if i < len(emojis_podio) else f"{i+1}."
             ventas = stats['ventas']
             clientes_unicos = len(stats['clientes_unicos'])
             sellos = stats['total_sellos']
@@ -1346,11 +1360,11 @@ async def generar_ranking_detallado():
             eficiencia = (ventas / clientes_unicos) if clientes_unicos > 0 else 0
             
             mensaje_ranking += (
-                f"{emoji} **{vendedor}**\n"
-                f"   📦 {ventas} venta{'s' if ventas > 1 else ''} | "
-                f"👥 {clientes_unicos} cliente{'s' if clientes_unicos > 1 else ''}\n"
+                f"{emoji} {vendedor}\n"
+                f"   📦 {ventas} ventas | "
+                f"👥 {clientes_unicos} clientes\n"
                 f"   🏷️ {sellos} sellos | "
-                f"📊 {eficiencia:.1f} vta/cli\n"
+                f"📊 {eficiencia:.1f} vta/cli\n\n"
             )
         
         # 📈 RESUMEN DEL RANKING
@@ -1358,23 +1372,23 @@ async def generar_ranking_detallado():
         total_vendedores_ranking = len(stats_vendedores)
         promedio_ventas = total_ventas_ranking / total_vendedores_ranking if total_vendedores_ranking > 0 else 0
         
-        mensaje_ranking += f"\n📈 **RESUMEN RANKING**\n"
-        mensaje_ranking += f"• Total ventas: **{total_ventas_ranking}**\n"
-        mensaje_ranking += f"• Vendedores activos: **{total_vendedores_ranking}**\n"
-        mensaje_ranking += f"• Promedio: **{promedio_ventas:.1f}** ventas/vendedor\n"
+        mensaje_ranking += f"📈 RESUMEN RANKING\n"
+        mensaje_ranking += f"• Total ventas: {total_ventas_ranking}\n"
+        mensaje_ranking += f"• Vendedores activos: {total_vendedores_ranking}\n"
+        mensaje_ranking += f"• Promedio: {promedio_ventas:.1f} ventas/vendedor\n"
         
         # 🎯 MEJOR VENDEDOR
         if ranking_ordenado:
             mejor_vendedor = ranking_ordenado[0]
-            mensaje_ranking += f"• 🏅 Mejor: **{mejor_vendedor[0]}** ({mejor_vendedor[1]['ventas']} ventas)"
+            mensaje_ranking += f"• 🏅 Mejor: {mejor_vendedor[0]} ({mejor_vendedor[1]['ventas']} ventas)"
         
         return mensaje_ranking
         
     except Exception as e:
-        return f"📊 **RANKING VENDEDORES**\n❌ Error: {str(e)}"
+        return f"📊 RANKING VENDEDORES\n❌ Error: {str(e)}"
 
 async def obtener_estadisticas_completas():
-    """📊 ESTADÍSTICAS COMPLETAS DEL SISTEMA - MEJORADO"""
+    """📊 ESTADÍSTICAS COMPLETAS DEL SISTEMA - CORREGIDO SIN MARKDOWN"""
     try:
         if not sheet_registro or not sheet_vendedores or not sheet_historial:
             return "❌ Error de conexión con Google Sheets"
@@ -1389,8 +1403,19 @@ async def obtener_estadisticas_completas():
         total_vendedores = len(datos_vendedores) - 1 if len(datos_vendedores) > 1 else 0
         total_ventas = len(datos_historial) - 1 if len(datos_historial) > 1 else 0
         
-        # 🏆 RANKING DE VENDEDORES (MEJORADO)
-        ranking_data = await generar_ranking_detallado()
+        # Vendedores activos/inactivos
+        activos_count = 0
+        inactivos_count = 0
+        if len(datos_vendedores) > 1:
+            for vendedor in datos_vendedores[1:]:
+                if len(vendedor) > 3:
+                    if vendedor[3].upper() == 'SI':
+                        activos_count += 1
+                    else:
+                        inactivos_count += 1
+        
+        # 🏆 RANKING SIMPLE
+        ranking_simple = await generar_ranking_detallado()
         
         # 📊 CÁLCULOS AVANZADOS
         total_sellos = 0
@@ -1425,36 +1450,36 @@ async def obtener_estadisticas_completas():
                 if len(venta) > 1 and venta[1].startswith(hoy):
                     ventas_hoy += 1
         
-        # 📝 CONSTRUIR MENSAJE COMPLETO
+        # 📝 CONSTRUIR MENSAJE COMPLETO - SIN MARKDOWN PROBLEMÁTICO
         estadisticas = f"""
-🏆 **ESTADÍSTICAS COMPLETAS - SHISHA MGTA**
+🏆 ESTADÍSTICAS COMPLETAS - SHISHA MGTA
 
-👥 **CLIENTES**
-├ 📊 Total registrados: {total_clientes}
-├ 🆕 Nuevos hoy: {clientes_nuevos_hoy}
-├ 🎯 Con sellos: {clientes_con_sellos}
-├ 🏆 Cerca de premio: {clientes_cerca_premio}
-└ 📈 Tasa actividad: {(clientes_con_sellos/total_clientes*100) if total_clientes > 0 else 0:.1f}%
+👥 CLIENTES
+• Total registrados: {total_clientes}
+• Nuevos hoy: {clientes_nuevos_hoy}
+• Con sellos: {clientes_con_sellos}
+• Cerca de premio: {clientes_cerca_premio}
+• Tasa actividad: {(clientes_con_sellos/total_clientes*100) if total_clientes > 0 else 0:.1f}%
 
-💰 **VENTAS & SELLOS**
-├ 🏷️ Total sellos: {total_sellos}
-├ 📦 Ventas totales: {total_ventas}
-├ 🎪 Ventas hoy: {ventas_hoy}
-└ 💵 Ingresos estimados: ${total_sellos * 50000:,}
+💰 VENTAS & SELLOS
+• Total sellos: {total_sellos}
+• Ventas totales: {total_ventas}
+• Ventas hoy: {ventas_hoy}
+• Ingresos estimados: ${total_sellos * 10:,}
 
-👨‍💼 **VENDEDORES**
-├ 👥 Total en sistema: {total_vendedores}
-├ ✅ Activos: {sum(1 for v in datos_vendedores[1:] if len(v) > 3 and v[3].upper() == 'SI')}
-└ 🔄 Inactivos: {total_vendedores - sum(1 for v in datos_vendedores[1:] if len(v) > 3 and v[3].upper() == 'SI')}
+👨‍💼 VENDEDORES
+• Total en sistema: {total_vendedores}
+• Activos: {activos_count}
+• Inactivos: {inactivos_count}
 
-{ranking_data}
+{ranking_simple}
 
-🔮 **PROYECCIONES**
-├ 🎯 Premios próximos: {clientes_cerca_premio} clientes
-├ 💰 Ingreso/día: ${(ventas_hoy * 50000):,}
-└ 📊 Ritmo: {ventas_hoy} ventas/hoy
+🔮 PROYECCIONES
+• Premios próximos: {clientes_cerca_premio} clientes
+• Ingreso/día: ${(ventas_hoy * 10):,}
+• Ritmo: {ventas_hoy} ventas/hoy
 
-⏰ **Actualizado:** {datetime.now().strftime('%H:%M:%S')}
+⏰ Actualizado: {datetime.now().strftime('%H:%M:%S')}
 """
         
         return estadisticas
@@ -1491,12 +1516,12 @@ if __name__ == "__main__":
     
     print("🚀 Shisha MGTA Bot - INICIADO")
     print("✅ FUNCIONALIDADES ACTIVAS:")
-    print("   • 📊 Estadísticas completas con ranking")
+    print("   • 📊 Estadísticas completas SIN errores Markdown")
     print("   • 🔔 Notificación al vendedor después del escaneo")
     print("   • 📋 Historial de compras")
-    print("   • 🏆 Ranking de vendedores (NUEVO DISEÑO)")
+    print("   • 🏆 Ranking de vendedores FUNCIONANDO")
     print("   • 👑 Panel admin completo")
-    print("   • 🎯 1 fila de headers en Vendedores")
+    print("   • 💰 MIS VENTAS corregido para vendedores")
     print("📊 Conectado a Google Sheets")
     print("🏺 Sistema de fidelidad activo")
     print("📱 QR únicos habilitados")
