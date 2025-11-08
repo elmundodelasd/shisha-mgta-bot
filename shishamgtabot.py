@@ -187,6 +187,42 @@ async def es_vendedor_sin_admin(user_id: str) -> bool:
     vendedores = await obtener_vendedores_activos()
     return any(v['user_id'] == user_id for v in vendedores)
 
+async def reset_system():
+    """🔄 LIMPIA TODOS LOS CACHES Y RESETEA SISTEMA - SOLO ADMIN"""
+    global vendedores_cache, codigos_activos, solicitudes_activas
+    
+    try:
+        # Limpiar cache de vendedores
+        vendedores_cache = {
+            'data': [],
+            'timestamp': None
+        }
+        
+        # Limpiar códigos QR activos
+        codigos_limpiados = len(codigos_activos)
+        codigos_activos = {}
+        
+        # Limpiar solicitudes activas
+        solicitudes_limpiadas = len(solicitudes_activas)
+        solicitudes_activas = {}
+        
+        # Limpiar usuarios agregando vendedor
+        usuarios_limpiados = len(usuarios_agregando_vendedor)
+        usuarios_agregando_vendedor.clear()
+        
+        # Forzar resincronización con Google Sheets
+        print("🔄 RESET SYSTEM ejecutado - Limpiando todos los caches")
+        
+        return {
+            'codigos_limpiados': codigos_limpiados,
+            'solicitudes_limpiadas': solicitudes_limpiadas,
+            'usuarios_limpiados': usuarios_limpiados
+        }
+        
+    except Exception as e:
+        print(f"❌ Error en reset system: {e}")
+        return None
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja el comando /start con diferentes parámetros"""
     user_id = str(update.effective_user.id)
@@ -223,11 +259,12 @@ async def mostrar_teclado_admin_completo(update: Update):
         [KeyboardButton("🏆 RANKING VENDEDORES"), KeyboardButton("👥 VER CLIENTES")],
         [KeyboardButton("💰 MIS VENTAS"), KeyboardButton("🛒 COMPRAS")],
         [KeyboardButton("📊 MIS SELLOS"), KeyboardButton("📋 MI HISTORIAL")],
-        [KeyboardButton("📞 CONTACTAR"), KeyboardButton("🏠 INICIO")]
+        [KeyboardButton("🔄 RESET SYSTEM"), KeyboardButton("📞 CONTACTAR")],
+        [KeyboardButton("🏠 INICIO")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    mensaje = "👑 PANEL ADMIN COMPLETO - Shisha MGTA\n(Tienes acceso a todas las funciones)"
+    mensaje = "👑 PANEL ADMIN COMPLETO - Shisha MGTA\n(Tienes acceso a todas las funciones + RESET)"
     
     await update.message.reply_text(mensaje, reply_markup=reply_markup)
 
@@ -238,6 +275,7 @@ async def mostrar_teclado_admin(update: Update):
         [KeyboardButton("📋 LISTAR VENDEDORES"), KeyboardButton("📊 ESTADÍSTICAS")],
         [KeyboardButton("🏆 RANKING VENDEDORES"), KeyboardButton("👥 VER CLIENTES")],
         [KeyboardButton("💰 MIS VENTAS"), KeyboardButton("📞 CONTACTAR")],
+        [KeyboardButton("🔄 RESET SYSTEM")],
         [KeyboardButton("🏠 INICIO")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -391,6 +429,31 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
     elif texto == "📞 CONTACTAR" or texto == "📞 CONTACTAR ADMIN":
         await manejar_contacto(update, context)
     
+    elif texto == "🔄 RESET SYSTEM":
+        if await es_admin(user_id):
+            # Confirmación antes de reset
+            keyboard = [
+                [InlineKeyboardButton("✅ SI, RESETEAR SISTEMA", callback_data="confirmar_reset")],
+                [InlineKeyboardButton("❌ NO, CANCELAR", callback_data="cancelar_reset")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                "🔄 **RESET DEL SISTEMA**\n\n"
+                "⚠️ **¿Estás seguro de que quieres resetear el sistema?**\n\n"
+                "📊 **Esto limpiará:**\n"
+                "• Cache de vendedores\n"
+                "• Códigos QR activos\n"
+                "• Solicitudes pendientes\n"
+                "• Datos en memoria temporal\n\n"
+                "💾 **NO afectará los datos en Google Sheets**\n"
+                "Solo se reseteará la memoria temporal del bot.\n\n"
+                "🔒 **Esta acción es solo para emergencias**",
+                reply_markup=reply_markup
+            )
+        else:
+            await update.message.reply_text("❌ Solo el administrador puede resetear el sistema.")
+    
     elif texto == "🏠 INICIO":
         await start(update, context)
     
@@ -399,6 +462,40 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
             await procesar_agregar_vendedor_rapido(update, context)
         else:
             await start(update, context)
+
+async def manejar_reset_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja la confirmación del reset del sistema"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = str(query.from_user.id)
+    data = query.data
+    
+    if not await es_admin(user_id):
+        await query.edit_message_text("❌ Solo el administrador puede resetear el sistema.")
+        return
+    
+    if data == "confirmar_reset":
+        # Ejecutar reset
+        resultado = await reset_system()
+        
+        if resultado:
+            await query.edit_message_text(
+                f"✅ **SISTEMA RESETEADO EXITOSAMENTE**\n\n"
+                f"🧹 **Elementos limpiados:**\n"
+                f"• {resultado['codigos_limpiados']} códigos QR\n"
+                f"• {resultado['solicitudes_limpiadas']} solicitudes\n"
+                f"• {resultado['usuarios_limpiados']} usuarios temporales\n\n"
+                f"🔄 **Todos los caches han sido limpiados**\n"
+                f"📊 **Los datos ahora están sincronizados con Google Sheets**\n\n"
+                f"¡Sistema listo para usar con datos actualizados! 🎉"
+            )
+            print(f"🔄 Sistema reseteado por admin {user_id}")
+        else:
+            await query.edit_message_text("❌ Error al resetear el sistema.")
+    
+    elif data == "cancelar_reset":
+        await query.edit_message_text("❌ Reset del sistema cancelado.")
 
 async def procesar_agregar_vendedor_rapido(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Procesa el agregado rápido de vendedor"""
@@ -808,7 +905,7 @@ async def agregar_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         
         if vendedores_cache['data']:
-            vendedores_cache['data'] = [nuevo_vendedor_data]
+            vendedores_cache['data'].append(nuevo_vendedor_data)
         else:
             vendedores_cache['data'] = [nuevo_vendedor_data]
         
@@ -1499,6 +1596,7 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, manejar_botones_avanzados))
     
     app.add_handler(CallbackQueryHandler(manejar_eliminar_vendedor, pattern='^eliminar_'))
+    app.add_handler(CallbackQueryHandler(manejar_reset_system, pattern='^(confirmar_reset|cancelar_reset)$'))
     
     app.add_handler(CommandHandler('agregarvendedor', agregar_vendedor))
     app.add_handler(CommandHandler('eliminarvendedor', eliminar_vendedor))
@@ -1520,8 +1618,9 @@ if __name__ == "__main__":
     print("   • 🔔 Notificación al vendedor después del escaneo")
     print("   • 📋 Historial de compras")
     print("   • 🏆 Ranking de vendedores FUNCIONANDO")
-    print("   • 👑 Panel admin completo")
+    print("   • 👑 Panel admin completo CON RESET")
     print("   • 💰 MIS VENTAS corregido para vendedores")
+    print("   • 🔄 BOTÓN RESET SYSTEM para admin")
     print("📊 Conectado a Google Sheets")
     print("🏺 Sistema de fidelidad activo")
     print("📱 QR únicos habilitados")
