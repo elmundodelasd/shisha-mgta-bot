@@ -1044,16 +1044,20 @@ async def manejar_seleccion_vendedor(update: Update, context: ContextTypes.DEFAU
         
         if data == "vendedor_todos":
             vendedores = await obtener_vendedores_activos()
-            vendedores_ids = [v['user_id'] for v in vendedores]
+            vendedores_ids = [v['user_id'] for v in vendedores if v['user_id'].isdigit()]
             mensaje_cliente = "📨 **QR enviado a todos los vendedores**"
             vendedor_nombre = "todos los vendedores"
         else:
             vendedor_id = data.replace('vendedor_', '')
-            vendedores_ids = [vendedor_id]
+            vendedores_ids = [vendedor_id] if vendedor_id.isdigit() else []
             
             vendedores = await obtener_vendedores_activos()
             vendedor_nombre = next((v['nombre'] for v in vendedores if v['user_id'] == vendedor_id), "Vendedor")
             mensaje_cliente = f"📨 **QR enviado a {vendedor_nombre}**"
+        
+        if not vendedores_ids:
+            await query.edit_message_text("❌ No hay vendedores válidos para enviar el QR.")
+            return
         
         qr_enviado = await generar_y_enviar_qr_automatico(
             context, nombre_cliente, user_id_cliente, vendedores_ids, vendedor_nombre, sellos_actual
@@ -1083,7 +1087,7 @@ async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE,
                                        nombre_cliente: str, user_id_cliente: str,
                                        vendedores_ids: list, vendedor_nombre: str,
                                        sellos_actual: int):
-    """Genera y envía QR automáticamente al vendedor"""
+    """Genera y envía QR automáticamente al vendedor - CORREGIDO"""
     try:
         codigo_unico = f"compra_{uuid.uuid4().hex[:8]}_{int(datetime.now().timestamp())}"
         link_compra = f"https://t.me/Shishamgtabot?start={codigo_unico}"
@@ -1118,14 +1122,18 @@ async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE,
         with open(nombre_archivo, 'rb') as qr_file:
             for vendedor_id in vendedores_ids:
                 try:
-                    await context.bot.send_photo(
-                        chat_id=vendedor_id,
-                        photo=qr_file,
-                        caption=mensaje_vendedor
-                    )
-                    qrs_enviados += 1
-                    print(f"📨 QR enviado a vendedor {vendedor_id}")
-                    qr_file.seek(0)
+                    # ✅ VERIFICAR QUE EL ID SEA VÁLIDO ANTES DE ENVIAR
+                    if vendedor_id.isdigit():
+                        await context.bot.send_photo(
+                            chat_id=int(vendedor_id),
+                            photo=qr_file,
+                            caption=mensaje_vendedor
+                        )
+                        qrs_enviados += 1
+                        print(f"📨 QR enviado a vendedor {vendedor_id}")
+                        qr_file.seek(0)
+                    else:
+                        print(f"⚠️ ID de vendedor inválido: {vendedor_id}")
                 except Exception as e:
                     print(f"❌ Error enviando QR a vendedor {vendedor_id}: {e}")
         
@@ -1235,7 +1243,7 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                         if vendedor['nombre'] == vendedor_actual:
                             try:
                                 await update._bot.send_message(
-                                    chat_id=vendedor['user_id'],
+                                    chat_id=int(vendedor['user_id']),
                                     text=mensaje_vendedor
                                 )
                                 print(f"📨 Notificación enviada al vendedor {vendedor_actual}")
