@@ -947,10 +947,11 @@ async def registrar_usuario(update: Update, user_id: str, nombre: str):
         await update.message.reply_text("❌ Error en el registro. Intenta más tarde.")
 
 async def registro_directo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando directo /registro"""
+    """Comando directo /registro - CORREGIDO PARA PERMITIR ADMIN"""
     user_id = str(update.effective_user.id)
     
-    if await es_vendedor(user_id):
+    # ✅ SOLO bloquear vendedores NO admin
+    if await es_vendedor(user_id) and not await es_admin(user_id):
         await update.message.reply_text(
             "❌ **No puedes registrarte como cliente**\n\n"
             "Eres un vendedor activo del sistema.\n"
@@ -967,6 +968,7 @@ async def solicitar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nombre_cliente = update.effective_user.first_name or "Cliente"
     
     try:
+        # ✅ PERMITIR AL ADMIN REALIZAR COMPRAS
         if await es_vendedor(user_id) and not await es_admin(user_id):
             await update.message.reply_text("❌ **Los vendedores no pueden realizar compras**\n\nSolo los clientes registrados pueden usar esta función.")
             return
