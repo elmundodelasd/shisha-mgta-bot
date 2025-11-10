@@ -54,6 +54,15 @@ vendedores_cache = {
     'timestamp': None
 }
 
+async def forzar_actualizacion_cache():
+    """Fuerza la actualización del cache de vendedores"""
+    global vendedores_cache
+    vendedores_cache = {
+        'data': [],
+        'timestamp': None
+    }
+    print("🔄 Cache de vendedores forzado a actualizar")
+
 def limpiar_duplicados_vendedores():
     """Limpia duplicados en la hoja de vendedores"""
     try:
@@ -95,13 +104,17 @@ def limpiar_duplicados_vendedores():
         print(f"❌ Error limpiando duplicados: {e}")
         return 0
 
-async def obtener_vendedores_activos():
-    """Obtiene lista de vendedores activos desde Google Sheets"""
+async def obtener_vendedores_activos(forzar_actualizacion=False):
+    """Obtiene lista de vendedores activos desde Google Sheets - ACTUALIZADO"""
     global vendedores_cache
     
     try:
+        if forzar_actualizacion:
+            vendedores_cache = {'data': [], 'timestamp': None}
+        
         if (vendedores_cache['timestamp'] and 
-            (datetime.now() - vendedores_cache['timestamp']).total_seconds() < 300):
+            (datetime.now() - vendedores_cache['timestamp']).total_seconds() < 300 and
+            not forzar_actualizacion):
             return vendedores_cache['data']
         
         if not sheet_vendedores:
@@ -140,7 +153,8 @@ async def obtener_vendedores_activos():
             nombre = vendedor_dict.get('nombre', 'Sin nombre')
             privilegios = vendedor_dict.get('privilegios', 'normal')
             
-            if (estado.upper() == 'SI' and username and 
+            # ✅ VERIFICAR QUE EL USERNAME SEA UN ID VÁLIDO (numérico) y esté activo
+            if (estado.upper() == 'SI' and username and username.isdigit() and 
                 username not in vendedores_ids_vistos):
                 
                 vendedores_ids_vistos.add(username)
@@ -170,6 +184,11 @@ async def obtener_vendedores_activos():
     except Exception as e:
         print(f"❌ Error obteniendo vendedores: {e}")
         return []
+
+async def obtener_vendedores_validos():
+    """Obtiene solo vendedores con IDs válidos para envío de QR"""
+    vendedores = await obtener_vendedores_activos()
+    return [v for v in vendedores if v['user_id'].isdigit()]
 
 async def es_admin(user_id: str) -> bool:
     """Verifica si el usuario es admin"""
@@ -239,7 +258,7 @@ async def mostrar_teclado_admin_completo(update: Update):
         [KeyboardButton("📊 ESTADÍSTICAS"), KeyboardButton("🏆 RANKING VENDEDORES")],
         [KeyboardButton("🛒 COMPRAS"), KeyboardButton("📊 MIS SELLOS")],
         [KeyboardButton("📋 MI HISTORIAL"), KeyboardButton("📞 CONTACTAR")],
-        [KeyboardButton("🔄 RESET SYSTEM"), KeyboardButton("🏠 INICIO")]
+        [KeyboardButton("🔄 ACTUALIZAR CACHE"), KeyboardButton("🏠 INICIO")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -380,6 +399,8 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
     
     elif texto == "📊 ESTADÍSTICAS":
         if await es_admin(user_id) or privilegios == 'premium':
+            # Forzar actualización de cache antes de mostrar estadísticas
+            await forzar_actualizacion_cache()
             estadisticas = await obtener_estadisticas_completas()
             await update.message.reply_text(estadisticas)
         else:
@@ -387,6 +408,8 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
     
     elif texto == "🏆 RANKING VENDEDORES":
         if await es_admin(user_id) or privilegios == 'premium':
+            # Forzar actualización de cache antes de mostrar ranking
+            await forzar_actualizacion_cache()
             ranking = await generar_ranking_detallado()
             await update.message.reply_text(ranking)
         else:
@@ -410,26 +433,12 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
     elif texto == "📞 CONTACTAR" or texto == "📞 CONTACTAR ADMIN":
         await manejar_contacto(update, context)
     
-    elif texto == "🔄 RESET SYSTEM":
+    elif texto == "🔄 ACTUALIZAR CACHE":
         if await es_admin(user_id):
-            keyboard = [
-                [InlineKeyboardButton("✅ SI, RESETEAR SISTEMA", callback_data="confirmar_reset")],
-                [InlineKeyboardButton("❌ NO, CANCELAR", callback_data="cancelar_reset")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                "🔄 **RESET DEL SISTEMA**\n\n"
-                "⚠️ **¿Estás seguro?**\n\n"
-                "📊 **Esto limpiará:**\n"
-                "• Cache de vendedores\n"
-                "• Códigos QR activos\n"
-                "• Solicitudes pendientes\n\n"
-                "💾 **NO afectará Google Sheets**",
-                reply_markup=reply_markup
-            )
+            await forzar_actualizacion_cache()
+            await update.message.reply_text("✅ **Cache actualizado correctamente**\n\nLos datos ahora están sincronizados con Google Sheets.")
         else:
-            await update.message.reply_text("❌ Solo el administrador puede resetear el sistema.")
+            await update.message.reply_text("❌ Solo el administrador puede actualizar el cache.")
     
     elif texto == "🏠 INICIO":
         await start(update, context)
@@ -493,19 +502,8 @@ async def procesar_agregar_vendedor_rapido(update: Update, context: ContextTypes
         
         sheet_vendedores.append_row(nueva_fila)
         
-        global vendedores_cache
-        nuevo_vendedor_data = {
-            'user_id': str(nuevo_vendedor_id),
-            'nombre': nombre_vendedor,
-            'privilegios': privilegios
-        }
-        
-        if vendedores_cache['data']:
-            vendedores_cache['data'].append(nuevo_vendedor_data)
-        else:
-            vendedores_cache['data'] = [nuevo_vendedor_data]
-        
-        vendedores_cache['timestamp'] = datetime.now()
+        # Forzar actualización del cache
+        await forzar_actualizacion_cache()
         
         vendedores_actualizados = await obtener_vendedores_activos()
         
@@ -861,10 +859,8 @@ async def manejar_eliminar_vendedor(update: Update, context: ContextTypes.DEFAUL
             await query.edit_message_text("❌ Vendedor no encontrado.")
             return
         
-        global vendedores_cache
-        if vendedores_cache['data']:
-            vendedores_cache['data'] = [v for v in vendedores_cache['data'] if v['user_id'] != vendedor_id]
-            vendedores_cache['timestamp'] = datetime.now()
+        # Forzar actualización del cache
+        await forzar_actualizacion_cache()
         
         vendedores_actualizados = await obtener_vendedores_activos()
         
@@ -978,7 +974,7 @@ async def solicitar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("🔐 **Primero debes registrarte**\n\nUsa 📝 REGISTRARME")
             return
         
-        vendedores = await obtener_vendedores_activos()
+        vendedores = await obtener_vendedores_validos()
         
         if not vendedores:
             await update.message.reply_text("❌ **No hay vendedores disponibles**")
@@ -1018,7 +1014,7 @@ async def solicitar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error procesando solicitud.")
 
 async def manejar_seleccion_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja la selección de vendedor y genera QR"""
+    """Maneja la selección de vendedor y genera QR - CORREGIDO"""
     query = update.callback_query
     await query.answer()
     
@@ -1043,8 +1039,8 @@ async def manejar_seleccion_vendedor(update: Update, context: ContextTypes.DEFAU
         sellos_actual = int(datos_cliente[3]) if len(datos_cliente) > 3 and datos_cliente[3] else 0
         
         if data == "vendedor_todos":
-            vendedores = await obtener_vendedores_activos()
-            vendedores_ids = [v['user_id'] for v in vendedores if v['user_id'].isdigit()]
+            vendedores = await obtener_vendedores_validos()
+            vendedores_ids = [v['user_id'] for v in vendedores]
             mensaje_cliente = "📨 **QR enviado a todos los vendedores**"
             vendedor_nombre = "todos los vendedores"
         else:
@@ -1057,6 +1053,7 @@ async def manejar_seleccion_vendedor(update: Update, context: ContextTypes.DEFAU
         
         if not vendedores_ids:
             await query.edit_message_text("❌ No hay vendedores válidos para enviar el QR.")
+            del solicitudes_activas[user_id_cliente]
             return
         
         qr_enviado = await generar_y_enviar_qr_automatico(
@@ -1082,6 +1079,8 @@ async def manejar_seleccion_vendedor(update: Update, context: ContextTypes.DEFAU
     except Exception as e:
         print(f"❌ Error en selección de vendedor: {e}")
         await query.edit_message_text("❌ Error procesando selección.")
+        if user_id_cliente in solicitudes_activas:
+            del solicitudes_activas[user_id_cliente]
 
 async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE, 
                                        nombre_cliente: str, user_id_cliente: str,
@@ -1122,7 +1121,6 @@ async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE,
         with open(nombre_archivo, 'rb') as qr_file:
             for vendedor_id in vendedores_ids:
                 try:
-                    # ✅ VERIFICAR QUE EL ID SEA VÁLIDO ANTES DE ENVIAR
                     if vendedor_id.isdigit():
                         await context.bot.send_photo(
                             chat_id=int(vendedor_id),
@@ -1240,7 +1238,7 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                     
                     vendedores = await obtener_vendedores_activos()
                     for vendedor in vendedores:
-                        if vendedor['nombre'] == vendedor_actual:
+                        if vendedor['nombre'] == vendedor_actual and vendedor['user_id'].isdigit():
                             try:
                                 await update._bot.send_message(
                                     chat_id=int(vendedor['user_id']),
@@ -1410,6 +1408,8 @@ async def listar_vendedores(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
+        # Forzar actualización del cache antes de listar
+        await forzar_actualizacion_cache()
         vendedores = await obtener_vendedores_activos()
         
         if not vendedores:
@@ -1442,13 +1442,17 @@ async def listar_vendedores(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error listando vendedores.")
 
 async def generar_ranking_detallado():
-    """🏆 GENERA RANKING DETALLADO DE VENDEDORES"""
+    """🏆 GENERA RANKING DETALLADO DE VENDEDORES - ACTUALIZADO"""
     try:
         if not sheet_historial or not sheet_vendedores:
             return "📊 RANKING VENDEDORES\n❌ No hay datos disponibles"
         
+        # Forzar actualización del cache
+        await forzar_actualizacion_cache()
+        vendedores_activos = await obtener_vendedores_activos()
+        nombres_vendedores_activos = [v['nombre'] for v in vendedores_activos]
+        
         datos_historial = sheet_historial.get_all_values()
-        datos_vendedores = sheet_vendedores.get_all_values()
         
         if len(datos_historial) <= 1:
             return "📊 RANKING VENDEDORES\n📭 No hay ventas registradas"
@@ -1458,17 +1462,19 @@ async def generar_ranking_detallado():
         for venta in datos_historial[1:]:
             if len(venta) > 2 and venta[2]:
                 vendedor = venta[2]
-                if vendedor not in stats_vendedores:
-                    stats_vendedores[vendedor] = {
-                        'ventas': 0,
-                        'clientes_unicos': set(),
-                        'ultima_venta': venta[1] if len(venta) > 1 else '',
-                        'total_sellos': 0
-                    }
-                
-                stats_vendedores[vendedor]['ventas'] += 1
-                if len(venta) > 0 and venta[0]:
-                    stats_vendedores[vendedor]['clientes_unicos'].add(venta[0])
+                # ✅ SOLO CONTAR VENDEDORES QUE ESTÉN ACTIVOS ACTUALMENTE
+                if vendedor in nombres_vendedores_activos:
+                    if vendedor not in stats_vendedores:
+                        stats_vendedores[vendedor] = {
+                            'ventas': 0,
+                            'clientes_unicos': set(),
+                            'ultima_venta': venta[1] if len(venta) > 1 else '',
+                            'total_sellos': 0
+                        }
+                    
+                    stats_vendedores[vendedor]['ventas'] += 1
+                    if len(venta) > 0 and venta[0]:
+                        stats_vendedores[vendedor]['clientes_unicos'].add(venta[0])
         
         datos_registro = sheet_registro.get_all_values()
         if len(datos_registro) > 1:
@@ -1484,7 +1490,10 @@ async def generar_ranking_detallado():
                                 key=lambda x: x[1]['ventas'], 
                                 reverse=True)
         
-        mensaje_ranking = "🏆 TOP VENDEDORES\n\n"
+        if not ranking_ordenado:
+            return "📊 RANKING VENDEDORES\n📭 No hay ventas de vendedores activos"
+        
+        mensaje_ranking = "🏆 TOP VENDEDORES ACTIVOS\n\n"
         
         emojis_podio = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         
@@ -1525,35 +1534,28 @@ async def generar_ranking_detallado():
         return f"📊 RANKING VENDEDORES\n❌ Error: {str(e)}"
 
 async def obtener_estadisticas_completas():
-    """📊 ESTADÍSTICAS COMPLETAS DEL SISTEMA"""
+    """📊 ESTADÍSTICAS COMPLETAS DEL SISTEMA - ACTUALIZADO"""
     try:
         if not sheet_registro or not sheet_vendedores or not sheet_historial:
             return "❌ Error de conexión con Google Sheets"
+        
+        # Forzar actualización del cache
+        await forzar_actualizacion_cache()
         
         datos_registro = sheet_registro.get_all_values()
         datos_vendedores = sheet_vendedores.get_all_values()
         datos_historial = sheet_historial.get_all_values()
         
         total_clientes = len(datos_registro) - 1 if len(datos_registro) > 1 else 0
-        total_vendedores = len(datos_vendedores) - 1 if len(datos_vendedores) > 1 else 0
         total_ventas = len(datos_historial) - 1 if len(datos_historial) > 1 else 0
         
-        activos_count = 0
-        inactivos_count = 0
-        vendedores_normales = 0
-        vendedores_premium = 0
-        if len(datos_vendedores) > 1:
-            for vendedor in datos_vendedores[1:]:
-                if len(vendedor) > 3:
-                    if vendedor[3].upper() == 'SI':
-                        activos_count += 1
-                        if len(vendedor) > 4:
-                            if vendedor[4] == 'premium':
-                                vendedores_premium += 1
-                            else:
-                                vendedores_normales += 1
-                    else:
-                        inactivos_count += 1
+        # Obtener vendedores activos desde cache actualizado
+        vendedores_activos = await obtener_vendedores_activos()
+        total_vendedores = len(vendedores_activos)
+        
+        activos_count = total_vendedores
+        vendedores_normales = len([v for v in vendedores_activos if v['privilegios'] == 'normal' and v['user_id'] != ADMIN_ID])
+        vendedores_premium = len([v for v in vendedores_activos if v['privilegios'] == 'premium'])
         
         ranking_simple = await generar_ranking_detallado()
         
@@ -1604,7 +1606,6 @@ async def obtener_estadisticas_completas():
 👨‍💼 VENDEDORES
 • Total en sistema: {total_vendedores}
 • Activos: {activos_count}
-• Inactivos: {inactivos_count}
 • 👤 Normales: {vendedores_normales}
 • 🌟 Premium: {vendedores_premium}
 
@@ -1656,39 +1657,6 @@ async def reset_system():
         print(f"❌ Error en reset system: {e}")
         return None
 
-async def manejar_reset_system(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja la confirmación del reset del sistema"""
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = str(query.from_user.id)
-    data = query.data
-    
-    if not await es_admin(user_id):
-        await query.edit_message_text("❌ Solo el administrador puede resetear el sistema.")
-        return
-    
-    if data == "confirmar_reset":
-        resultado = await reset_system()
-        
-        if resultado:
-            await query.edit_message_text(
-                f"✅ **SISTEMA RESETEADO**\n\n"
-                f"🧹 **Elementos limpiados:**\n"
-                f"• {resultado['codigos_limpiados']} códigos QR\n"
-                f"• {resultado['solicitudes_limpiadas']} solicitudes\n"
-                f"• {resultado['usuarios_limpiados']} usuarios temporales\n\n"
-                f"🔄 **Todos los caches han sido limpiados**\n"
-                f"📊 **Los datos ahora están sincronizados con Google Sheets**\n\n"
-                f"¡Sistema listo para usar con datos actualizados! 🎉"
-            )
-            print(f"🔄 Sistema reseteado por admin {user_id}")
-        else:
-            await query.edit_message_text("❌ Error al resetear el sistema.")
-    
-    elif data == "cancelar_reset":
-        await query.edit_message_text("❌ Reset del sistema cancelado.")
-
 # HANDLERS PRINCIPALES
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
@@ -1701,7 +1669,6 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, manejar_botones_avanzados))
     
     app.add_handler(CallbackQueryHandler(manejar_eliminar_vendedor, pattern='^eliminar_'))
-    app.add_handler(CallbackQueryHandler(manejar_reset_system, pattern='^(confirmar_reset|cancelar_reset)$'))
     
     app.add_handler(CommandHandler('agregarvendedor', manejar_botones_avanzados))
     app.add_handler(CommandHandler('eliminarvendedor', manejar_botones_avanzados))
@@ -1727,12 +1694,12 @@ if __name__ == "__main__":
     print("   • 🚫 Eliminar cliente (admin)")
     print("   • 💰 Mis ventas con sellos por cliente")
     print("   • 🛒 Botón COMPRAS para clientes registrados")
-    print("   • 📊 Estadísticas con privilegios")
-    print("   • 🏆 Ranking con privilegios")
+    print("   • 📊 Estadísticas ACTUALIZADAS")
+    print("   • 🏆 Ranking ACTUALIZADO")
     print("   • 🔔 Notificación al vendedor")
     print("   • 📋 Historial de compras")
     print("   • 👑 Panel admin completo")
-    print("   • 🔄 BOTÓN RESET SYSTEM para admin")
+    print("   • 🔄 ACTUALIZAR CACHE para admin")
     print("📊 Conectado a Google Sheets")
     print("🏺 Sistema de fidelidad activo")
     print("📱 QR únicos habilitados")
