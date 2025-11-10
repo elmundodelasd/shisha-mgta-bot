@@ -94,7 +94,7 @@ def inicializar_google_sheets():
                                         ["user_id", "username", "nombre_completo", "fecha_registro", "sellos", "vendedor"])
         
         sheet_vendedores = inicializar_hoja("Vendedores", 
-                                          ["user_id", "nombre", "fecha_registro", "estado", "privilegios"])
+                                          ["username", "nombre", "fecha_incorporacion", "estado", "privilegios"])
         
         sheet_historial = inicializar_hoja("HistorialCompras", 
                                          ["user_id", "fecha", "vendedor", "cantidad", "tipo"])
@@ -247,11 +247,13 @@ async def obtener_vendedores_activos(forzar_actualizacion=False):
         vendedores_activos = []
         vendedores_ids_vistos = set()
         
+        print(f"🔍 Procesando {len(datos_vendedores)} filas de vendedores...")
+        
         for i, fila in enumerate(datos_vendedores, 1):
             if not fila or not any(fila):
                 continue
                 
-            # ✅ CORRECCIÓN: Mapear correctamente las columnas
+            # ✅ CORRECCIÓN: Mapear correctamente las columnas según tu estructura real
             vendedor_dict = {}
             for j, header in enumerate(headers):
                 if j < len(fila):
@@ -259,13 +261,13 @@ async def obtener_vendedores_activos(forzar_actualizacion=False):
                 else:
                     vendedor_dict[header] = ""
             
-            # ✅ CORRECCIÓN: Usar las columnas correctas según tu estructura de Sheets
+            # ✅ CORRECCIÓN: Usar las columnas CORRECTAS según tu estructura de Sheets
             estado = vendedor_dict.get('estado', 'SI')
-            user_id = vendedor_dict.get('user_id', '')  # ✅ Columna correcta
+            user_id = vendedor_dict.get('username', '')  # ✅ COLUMNA CORREGIDA: 'username' no 'user_id'
             nombre = vendedor_dict.get('nombre', 'Sin nombre')
             privilegios = vendedor_dict.get('privilegios', 'normal')
             
-            print(f"🔍 Vendedor encontrado: ID={user_id}, Nombre={nombre}, Estado={estado}, Privilegios={privilegios}")
+            print(f"🔍 Procesando vendedor {i}: ID={user_id}, Nombre={nombre}, Estado={estado}, Privilegios={privilegios}")
             
             if (estado.upper() == 'SI' and user_id and user_id.isdigit() and 
                 user_id not in vendedores_ids_vistos):
@@ -279,6 +281,8 @@ async def obtener_vendedores_activos(forzar_actualizacion=False):
                 }
                 vendedores_activos.append(vendedor_data)
                 print(f"✅ Vendedor activo agregado: {nombre} ({user_id})")
+            else:
+                print(f"❌ Vendedor no cumple requisitos: ID={user_id}, Estado={estado}")
         
         # ✅ CORRECCIÓN: Agregar admin si no está en la lista
         admin_ya_esta = any(v['user_id'] == ADMIN_ID for v in vendedores_activos)
@@ -1855,6 +1859,7 @@ if __name__ == "__main__":
     print("   • 🛡️ Manejo robusto de errores")
     print("   • ⚡ Estructura de ejecución corregida")
     print("   • 🔍 Debug de vendedores activado")
+    print("   • ✅ CORRECCIÓN CRÍTICA: Mapeo de columnas 'username' en lugar de 'user_id'")
     print("📊 Conectado a Google Sheets - 4 hojas activas")
     print("🏺 Sistema de fidelidad activo")
     print("📱 QR únicos con hora Venezuela correcta")
