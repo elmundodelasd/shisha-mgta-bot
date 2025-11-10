@@ -134,6 +134,36 @@ vendedores_cache = {
     'timestamp': None
 }
 
+def debug_hoja_vendedores():
+    """Función de debug para verificar la estructura de la hoja Vendedores"""
+    try:
+        if not sheet_vendedores:
+            print("❌ No hay conexión a Google Sheets")
+            return
+        
+        print("🔍 DEBUG - ESTRUCTURA HOJA VENDEDORES:")
+        todos_datos = sheet_vendedores.get_all_values()
+        
+        if len(todos_datos) == 0:
+            print("   📭 Hoja vacía")
+            return
+        
+        headers = todos_datos[0]
+        print(f"   📊 Encabezados: {headers}")
+        
+        if len(todos_datos) > 1:
+            print("   👥 Datos de vendedores:")
+            for i, fila in enumerate(todos_datos[1:], 1):
+                print(f"      {i}. {fila}")
+        else:
+            print("   📭 No hay datos de vendedores")
+            
+    except Exception as e:
+        print(f"❌ Error en debug: {e}")
+
+# Llamar debug al inicio
+debug_hoja_vendedores()
+
 async def forzar_actualizacion_cache():
     """Fuerza la actualización del cache de vendedores"""
     global vendedores_cache
@@ -161,16 +191,16 @@ def limpiar_duplicados_vendedores():
         
         for i, fila in enumerate(datos_vendedores):
             if len(fila) > 0 and fila[0]:
-                username = fila[0]
+                user_id = fila[0]
                 estado = fila[3] if len(fila) > 3 else 'SI'
                 
-                if username == ADMIN_ID:
+                if user_id == ADMIN_ID:
                     continue
                     
-                if username in vendedores_unicos and estado == 'SI':
+                if user_id in vendedores_unicos and estado == 'SI':
                     filas_a_eliminar.append(i + 2)
                 else:
-                    vendedores_unicos[username] = True
+                    vendedores_unicos[user_id] = True
         
         for fila_num in sorted(filas_a_eliminar, reverse=True):
             sheet_vendedores.delete_rows(fila_num)
@@ -185,7 +215,7 @@ def limpiar_duplicados_vendedores():
         return 0
 
 async def obtener_vendedores_activos(forzar_actualizacion=False):
-    """Obtiene lista de vendedores activos desde Google Sheets"""
+    """Obtiene lista de vendedores activos desde Google Sheets - CORREGIDA"""
     global vendedores_cache
     
     try:
@@ -221,6 +251,7 @@ async def obtener_vendedores_activos(forzar_actualizacion=False):
             if not fila or not any(fila):
                 continue
                 
+            # ✅ CORRECCIÓN: Mapear correctamente las columnas
             vendedor_dict = {}
             for j, header in enumerate(headers):
                 if j < len(fila):
@@ -228,23 +259,28 @@ async def obtener_vendedores_activos(forzar_actualizacion=False):
                 else:
                     vendedor_dict[header] = ""
             
+            # ✅ CORRECCIÓN: Usar las columnas correctas según tu estructura de Sheets
             estado = vendedor_dict.get('estado', 'SI')
-            username = vendedor_dict.get('user_id', '')
+            user_id = vendedor_dict.get('user_id', '')  # ✅ Columna correcta
             nombre = vendedor_dict.get('nombre', 'Sin nombre')
             privilegios = vendedor_dict.get('privilegios', 'normal')
             
-            if (estado.upper() == 'SI' and username and username.isdigit() and 
-                username not in vendedores_ids_vistos):
+            print(f"🔍 Vendedor encontrado: ID={user_id}, Nombre={nombre}, Estado={estado}, Privilegios={privilegios}")
+            
+            if (estado.upper() == 'SI' and user_id and user_id.isdigit() and 
+                user_id not in vendedores_ids_vistos):
                 
-                vendedores_ids_vistos.add(username)
+                vendedores_ids_vistos.add(user_id)
                 
                 vendedor_data = {
-                    'user_id': str(username),
+                    'user_id': str(user_id),
                     'nombre': nombre,
                     'privilegios': privilegios
                 }
                 vendedores_activos.append(vendedor_data)
+                print(f"✅ Vendedor activo agregado: {nombre} ({user_id})")
         
+        # ✅ CORRECCIÓN: Agregar admin si no está en la lista
         admin_ya_esta = any(v['user_id'] == ADMIN_ID for v in vendedores_activos)
         if not admin_ya_esta:
             vendedores_activos.append({
@@ -257,11 +293,19 @@ async def obtener_vendedores_activos(forzar_actualizacion=False):
         vendedores_cache['data'] = vendedores_activos
         vendedores_cache['timestamp'] = datetime.now()
         
-        print(f"🎯 Total vendedores activos: {len(vendedores_activos)} - Hora: {obtener_hora_venezuela()}")
+        print(f"🎯 Total vendedores activos encontrados: {len(vendedores_activos)} - Hora: {obtener_hora_venezuela()}")
+        
+        # ✅ DEBUG: Mostrar todos los vendedores encontrados
+        for v in vendedores_activos:
+            print(f"   👤 {v['nombre']} (ID: {v['user_id']}) - {v['privilegios']}")
+        
         return vendedores_activos
         
     except Exception as e:
-        print(f"❌ Error obteniendo vendedores: {e}")
+        print(f"❌ Error crítico obteniendo vendedores: {e}")
+        # ✅ DEBUG: Mostrar más información del error
+        import traceback
+        print(f"📋 Traceback completo: {traceback.format_exc()}")
         return []
 
 async def obtener_vendedores_validos():
@@ -1810,6 +1854,7 @@ if __name__ == "__main__":
     print("   • 🔒 Sistema de precios privado funcionando")
     print("   • 🛡️ Manejo robusto de errores")
     print("   • ⚡ Estructura de ejecución corregida")
+    print("   • 🔍 Debug de vendedores activado")
     print("📊 Conectado a Google Sheets - 4 hojas activas")
     print("🏺 Sistema de fidelidad activo")
     print("📱 QR únicos con hora Venezuela correcta")
