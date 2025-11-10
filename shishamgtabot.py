@@ -6,6 +6,7 @@ import os
 import json
 import time
 import logging
+import traceback
 from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
@@ -308,7 +309,6 @@ async def obtener_vendedores_activos(forzar_actualizacion=False):
     except Exception as e:
         print(f"❌ Error crítico obteniendo vendedores: {e}")
         # ✅ DEBUG: Mostrar más información del error
-        import traceback
         print(f"📋 Traceback completo: {traceback.format_exc()}")
         return []
 
@@ -1606,7 +1606,7 @@ async def historial_cliente(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error obteniendo historial.")
 
 async def listar_vendedores(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lista todos los vendedores - SOLO ADMIN"""
+    """Lista todos los vendedores - SOLO ADMIN - CORREGIDO"""
     user_id = str(update.effective_user.id)
     
     if not await es_admin(user_id):
@@ -1614,36 +1614,58 @@ async def listar_vendedores(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
+        print(f"🔍 Ejecutando Listar Vendedores - Usuario: {user_id}")
         await forzar_actualizacion_cache()
         vendedores = await obtener_vendedores_activos()
+        
+        # ✅ CORRECCIÓN: Verificar que vendedores sea una lista
+        if not isinstance(vendedores, list):
+            print(f"❌ Error: vendedores no es una lista, es: {type(vendedores)} - {vendedores}")
+            await update.message.reply_text("❌ Error: Datos de vendedores corruptos.")
+            return
+        
+        print(f"📊 Vendedores obtenidos: {len(vendedores)} - Tipo: {type(vendedores)}")
         
         if not vendedores:
             mensaje = "👥 **VENDEDORES ACTIVOS:**\n• No hay vendedores activos"
         else:
             mensaje = f"👥 **VENDEDORES ACTIVOS**\n⏰ Hora: {obtener_hora_venezuela()}\n"
             for i, vendedor in enumerate(vendedores, 1):
-                privilegios_emoji = "👑" if vendedor['user_id'] == ADMIN_ID else ("🌟" if vendedor['privilegios'] == 'premium' else "👤")
-                es_admin_str = " (Admin)" if vendedor['user_id'] == ADMIN_ID else ""
-                privilegios_str = f" - {vendedor['privilegios'].upper()}" if vendedor['user_id'] != ADMIN_ID else ""
-                mensaje += f"{i}. {privilegios_emoji} {vendedor['nombre']} (ID: {vendedor['user_id']}){es_admin_str}{privilegios_str}\n"
+                # ✅ CORRECCIÓN: Verificar estructura del vendedor
+                if not isinstance(vendedor, dict):
+                    print(f"❌ Vendedor {i} no es dict: {type(vendedor)} - {vendedor}")
+                    continue
+                    
+                user_id_vendedor = vendedor.get('user_id', 'Sin ID')
+                nombre_vendedor = vendedor.get('nombre', 'Sin nombre')
+                privilegios_vendedor = vendedor.get('privilegios', 'normal')
+                
+                privilegios_emoji = "👑" if user_id_vendedor == ADMIN_ID else ("🌟" if privilegios_vendedor == 'premium' else "👤")
+                es_admin_str = " (Admin)" if user_id_vendedor == ADMIN_ID else ""
+                privilegios_str = f" - {privilegios_vendedor.upper()}" if user_id_vendedor != ADMIN_ID else ""
+                mensaje += f"{i}. {privilegios_emoji} {nombre_vendedor} (ID: {user_id_vendedor}){es_admin_str}{privilegios_str}\n"
         
-        total_general = len(vendedores)
-        vendedores_normales = len([v for v in vendedores if v['user_id'] != ADMIN_ID and v['privilegios'] == 'normal'])
-        vendedores_premium = len([v for v in vendedores if v['user_id'] != ADMIN_ID and v['privilegios'] == 'premium'])
-        total_eliminables = len(vendedores_normales) + len(vendedores_premium)
-        
-        mensaje += f"\n📊 **Total en sistema:** {total_general} vendedores"
-        mensaje += f"\n👤 **Vendedores normales:** {len(vendedores_normales)}"
-        mensaje += f"\n🌟 **Vendedores premium:** {len(vendedores_premium)}"
-        if total_general > total_eliminables:
-            mensaje += f"\n👑 **Eres el admin** (no puedes eliminarte)"
-        if total_eliminables > 0:
-            mensaje += f"\n🚫 **Disponibles para eliminar:** {total_eliminables} vendedores"
+        # ✅ CORRECCIÓN: Solo calcular estadísticas si hay vendedores
+        if vendedores:
+            total_general = len(vendedores)
+            vendedores_normales = len([v for v in vendedores if v.get('user_id') != ADMIN_ID and v.get('privilegios') == 'normal'])
+            vendedores_premium = len([v for v in vendedores if v.get('user_id') != ADMIN_ID and v.get('privilegios') == 'premium'])
+            total_eliminables = len(vendedores_normales) + len(vendedores_premium)
+            
+            mensaje += f"\n📊 **Total en sistema:** {total_general} vendedores"
+            mensaje += f"\n👤 **Vendedores normales:** {vendedores_normales}"
+            mensaje += f"\n🌟 **Vendedores premium:** {vendedores_premium}"
+            if total_general > total_eliminables:
+                mensaje += f"\n👑 **Eres el admin** (no puedes eliminarte)"
+            if total_eliminables > 0:
+                mensaje += f"\n🚫 **Disponibles para eliminar:** {total_eliminables} vendedores"
         
         await update.message.reply_text(mensaje)
+        print(f"✅ Lista de vendedores enviada correctamente - Total: {len(vendedores) if isinstance(vendedores, list) else 'N/A'}")
         
     except Exception as e:
         print(f"❌ Error listando vendedores: {e}")
+        print(f"📋 Traceback completo: {traceback.format_exc()}")
         await update.message.reply_text("❌ Error listando vendedores.")
 
 async def generar_ranking_detallado():
@@ -1860,6 +1882,7 @@ if __name__ == "__main__":
     print("   • ⚡ Estructura de ejecución corregida")
     print("   • 🔍 Debug de vendedores activado")
     print("   • ✅ CORRECCIÓN CRÍTICA: Mapeo de columnas 'username' en lugar de 'user_id'")
+    print("   • ✅ CORRECCIÓN CRÍTICA: Función listar_vendedores corregida con validación de tipos")
     print("📊 Conectado a Google Sheets - 4 hojas activas")
     print("🏺 Sistema de fidelidad activo")
     print("📱 QR únicos con hora Venezuela correcta")
