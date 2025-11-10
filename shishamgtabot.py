@@ -621,7 +621,7 @@ async def procesar_eliminar_cliente(update: Update, context: ContextTypes.DEFAUL
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
 async def mostrar_clientes_admin(update: Update):
-    """Muestra todos los clientes para admin"""
+    """Muestra todos los clientes para admin - CORREGIDO ÍNDICES"""
     try:
         if not sheet_registro:
             await update.message.reply_text("❌ Error de conexión con Google Sheets.")
@@ -639,11 +639,11 @@ async def mostrar_clientes_admin(update: Update):
         mensaje = "👥 **TODOS LOS CLIENTES - ADMIN**\n\n"
         
         for i, cliente in enumerate(datos_clientes[-20:][::-1], 1):
-            if len(cliente) >= 3:
+            if len(cliente) >= 6:  # Verificar que tenga al menos 6 columnas
                 user_id_cliente = cliente[0]
                 nombre_completo = cliente[2] if len(cliente) > 2 and cliente[2] else f"Usuario_{user_id_cliente}"
-                sellos = cliente[3] if len(cliente) > 3 and cliente[3] else "0"
-                vendedor = cliente[4] if len(cliente) > 4 and cliente[4] else "Sin asignar"
+                sellos = cliente[4] if len(cliente) > 4 and cliente[4] else "0"  # ÍNDICE CORREGIDO: 4
+                vendedor = cliente[5] if len(cliente) > 5 and cliente[5] else "Sin asignar"  # ÍNDICE CORREGIDO: 5
                 
                 mensaje += f"{i}. **{nombre_completo}**\n"
                 mensaje += f"   🆔 {user_id_cliente} | 🏺 {sellos}/10\n"
@@ -660,7 +660,7 @@ async def mostrar_clientes_admin(update: Update):
         await update.message.reply_text("❌ Error obteniendo datos de clientes.")
 
 async def mostrar_clientes_vendedor(update: Update, user_id: str):
-    """Muestra clientes del vendedor específico"""
+    """Muestra clientes del vendedor específico - CORREGIDO ÍNDICES"""
     try:
         if not sheet_registro:
             await update.message.reply_text("❌ Error de conexión con Google Sheets.")
@@ -686,7 +686,7 @@ async def mostrar_clientes_vendedor(update: Update, user_id: str):
         
         clientes_vendedor = []
         for cliente in datos_clientes:
-            if len(cliente) > 4 and cliente[4] == nombre_vendedor:
+            if len(cliente) > 5 and cliente[5] == nombre_vendedor:  # ÍNDICE CORREGIDO: 5
                 clientes_vendedor.append(cliente)
         
         if not clientes_vendedor:
@@ -696,21 +696,21 @@ async def mostrar_clientes_vendedor(update: Update, user_id: str):
         mensaje = f"👥 **MIS CLIENTES - {nombre_vendedor}**\n\n"
         
         for i, cliente in enumerate(clientes_vendedor[-15:][::-1], 1):
-            if len(cliente) >= 3:
+            if len(cliente) >= 6:  # Verificar que tenga al menos 6 columnas
                 user_id_cliente = cliente[0]
                 nombre_completo = cliente[2] if len(cliente) > 2 and cliente[2] else f"Usuario_{user_id_cliente}"
-                sellos = cliente[3] if len(cliente) > 3 and cliente[3] else "0"
+                sellos = cliente[4] if len(cliente) > 4 and cliente[4] else "0"  # ÍNDICE CORREGIDO: 4
                 
                 mensaje += f"{i}. **{nombre_completo}**\n"
                 mensaje += f"   🆔 {user_id_cliente} | 🏺 {sellos}/10\n\n"
         
         total_clientes = len(clientes_vendedor)
-        clientes_cerca_premio = len([c for c in clientes_vendedor if len(c) > 3 and c[3] and int(c[3]) >= 7])
+        clientes_cerca_premio = len([c for c in clientes_vendedor if len(c) > 4 and c[4] and int(c[4]) >= 7])  # ÍNDICE CORREGIDO: 4
         
         mensaje += f"📊 **Resumen:**\n"
         mensaje += f"• Total clientes: {total_clientes}\n"
         mensaje += f"• Cerca del premio: {clientes_cerca_premio}\n"
-        mensaje += f"• Sellos generados: {sum(int(c[3]) for c in clientes_vendedor if len(c) > 3 and c[3])}"
+        mensaje += f"• Sellos generados: {sum(int(c[4]) for c in clientes_vendedor if len(c) > 4 and c[4])}"  # ÍNDICE CORREGIDO: 4
         
         await update.message.reply_text(mensaje)
         print(f"📋 Vendedor {nombre_vendedor} consultó sus clientes")
@@ -720,7 +720,7 @@ async def mostrar_clientes_vendedor(update: Update, user_id: str):
         await update.message.reply_text("❌ Error obteniendo datos de clientes.")
 
 async def mostrar_mis_ventas(update: Update, user_id: str):
-    """Muestra clientes personales del vendedor con sus sellos"""
+    """Muestra clientes personales del vendedor con sus sellos - CORREGIDO ÍNDICES"""
     try:
         if not sheet_registro:
             await update.message.reply_text("❌ Error de conexión con Google Sheets.")
@@ -752,7 +752,7 @@ async def mostrar_mis_ventas(update: Update, user_id: str):
             clientes_vendedor = datos_clientes
             titulo = "💰 **TODAS LAS VENTAS - ADMIN**\n\n"
         else:
-            clientes_vendedor = [c for c in datos_clientes if len(c) > 4 and c[4] == nombre_vendedor]
+            clientes_vendedor = [c for c in datos_clientes if len(c) > 5 and c[5] == nombre_vendedor]  # ÍNDICE CORREGIDO: 5
             titulo = f"💰 **MIS VENTAS - {nombre_vendedor}**\n\n"
         
         if not clientes_vendedor:
@@ -762,11 +762,11 @@ async def mostrar_mis_ventas(update: Update, user_id: str):
         mensaje = titulo
         
         for i, cliente in enumerate(clientes_vendedor[-10:][::-1], 1):
-            if len(cliente) >= 3:
+            if len(cliente) >= 6:  # Verificar que tenga al menos 6 columnas
                 user_id_cliente = cliente[0]
                 nombre_completo = cliente[2] if len(cliente) > 2 and cliente[2] else f"Usuario_{user_id_cliente}"
-                sellos = cliente[3] if len(cliente) > 3 and cliente[3] else "0"
-                vendedor_asignado = cliente[4] if len(cliente) > 4 and cliente[4] else "Sin asignar"
+                sellos = cliente[4] if len(cliente) > 4 and cliente[4] else "0"  # ÍNDICE CORREGIDO: 4
+                vendedor_asignado = cliente[5] if len(cliente) > 5 and cliente[5] else "Sin asignar"  # ÍNDICE CORREGIDO: 5
                 
                 estado_premio = "🎯 (Cerca del premio!)" if int(sellos) >= 7 else ""
                 
@@ -779,8 +779,8 @@ async def mostrar_mis_ventas(update: Update, user_id: str):
                     mensaje += f"   🆔 {user_id_cliente} | 🏺 {sellos}/10 {estado_premio}\n\n"
         
         total_clientes = len(clientes_vendedor)
-        clientes_cerca_premio = len([c for c in clientes_vendedor if len(c) > 3 and c[3] and int(c[3]) >= 7])
-        total_sellos = sum(int(c[3]) for c in clientes_vendedor if len(c) > 3 and c[3])
+        clientes_cerca_premio = len([c for c in clientes_vendedor if len(c) > 4 and c[4] and int(c[4]) >= 7])  # ÍNDICE CORREGIDO: 4
+        total_sellos = sum(int(c[4]) for c in clientes_vendedor if len(c) > 4 and c[4])  # ÍNDICE CORREGIDO: 4
         
         mensaje += f"📊 **Resumen:**\n"
         mensaje += f"• Total clientes: {total_clientes}\n"
@@ -1014,7 +1014,7 @@ async def solicitar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error procesando solicitud.")
 
 async def manejar_seleccion_vendedor(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja la selección de vendedor y genera QR - CORREGIDO"""
+    """Maneja la selección de vendedor y genera QR - CORREGIDO ÍNDICES"""
     query = update.callback_query
     await query.answer()
     
@@ -1033,10 +1033,10 @@ async def manejar_seleccion_vendedor(update: Update, context: ContextTypes.DEFAU
         fila = celda.row
         datos_cliente = sheet_registro.row_values(fila)
         
-        while len(datos_cliente) < 5:
+        while len(datos_cliente) < 6:
             datos_cliente.append("")
         
-        sellos_actual = int(datos_cliente[3]) if len(datos_cliente) > 3 and datos_cliente[3] else 0
+        sellos_actual = int(datos_cliente[4]) if len(datos_cliente) > 4 and datos_cliente[4] else 0  # ÍNDICE CORREGIDO: 4
         
         if data == "vendedor_todos":
             vendedores = await obtener_vendedores_validos()
@@ -1147,7 +1147,7 @@ async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE,
         return False
 
 async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
-    """Procesa una compra desde QR único - CON NOTIFICACIÓN AL VENDEDOR"""
+    """Procesa una compra desde QR único - CON NOTIFICACIÓN AL VENDEDOR - CORREGIDO ÍNDICES"""
     try:
         if not sheet_registro:
             await update.message.reply_text("❌ Error del sistema.")
@@ -1203,11 +1203,11 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                 while len(datos_actuales) < 6:
                     datos_actuales.append("")
                 
-                sellos_actual = int(datos_actuales[3]) if datos_actuales[3] else 0
+                sellos_actual = int(datos_actuales[4]) if datos_actuales[4] else 0  # ÍNDICE CORREGIDO: 4
                 nuevos_sellos = sellos_actual + 1
                 
-                sheet_registro.update_cell(fila, 4, nuevos_sellos)
-                sheet_registro.update_cell(fila, 5, vendedor_actual)
+                sheet_registro.update_cell(fila, 5, nuevos_sellos)  # ÍNDICE CORREGIDO: 5 (sellos)
+                sheet_registro.update_cell(fila, 6, vendedor_actual) # ÍNDICE CORREGIDO: 6 (vendedor)
                 sellos_actual = nuevos_sellos
             
             try:
@@ -1253,10 +1253,10 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
             
             celda_actualizada = sheet_registro.find(user_id)
             datos_actualizados = sheet_registro.row_values(celda_actualizada.row)
-            sellos_actual = int(datos_actualizados[3]) if len(datos_actualizados) > 3 and datos_actualizados[3] else 0
+            sellos_actual = int(datos_actualizados[4]) if len(datos_actualizados) > 4 and datos_actualizados[4] else 0  # ÍNDICE CORREGIDO: 4
             
             if sellos_actual >= 10:
-                sheet_registro.update_cell(celda_actualizada.row, 4, 0)
+                sheet_registro.update_cell(celda_actualizada.row, 5, 0)  # ÍNDICE CORREGIDO: 5
                 await update.message.reply_text(
                     "🎉 **¡FELICIDADES!** 🎉\n\n"
                     "🏺 **Has completado 10 compras en Shisha MGTA**\n\n"
@@ -1303,7 +1303,7 @@ def limpiar_codigos_expirados():
     return len(expirados)
 
 async def sellos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra los sellos actuales del usuario"""
+    """Muestra los sellos actuales del usuario - CORREGIDO ÍNDICES"""
     user_id = str(update.effective_user.id)
     
     try:
@@ -1314,7 +1314,7 @@ async def sellos(update: Update, context: ContextTypes.DEFAULT_TYPE):
         celda = sheet_registro.find(user_id)
         if celda:
             datos = sheet_registro.row_values(celda.row)
-            sellos_actual = int(datos[3]) if len(datos) > 3 and datos[3] else 0
+            sellos_actual = int(datos[4]) if len(datos) > 4 and datos[4] else 0  # ÍNDICE CORREGIDO: 4
             
             await update.message.reply_text(
                 f"📊 Tu progreso en Shisha MGTA\n\n"
@@ -1479,10 +1479,10 @@ async def generar_ranking_detallado():
         datos_registro = sheet_registro.get_all_values()
         if len(datos_registro) > 1:
             for cliente in datos_registro[1:]:
-                if len(cliente) > 4 and cliente[4] in stats_vendedores:
-                    if len(cliente) > 3 and cliente[3]:
+                if len(cliente) > 5 and cliente[5] in stats_vendedores:  # ÍNDICE CORREGIDO: 5
+                    if len(cliente) > 4 and cliente[4]:  # ÍNDICE CORREGIDO: 4
                         try:
-                            stats_vendedores[cliente[4]]['total_sellos'] += int(cliente[3])
+                            stats_vendedores[cliente[5]]['total_sellos'] += int(cliente[4])  # ÍNDICES CORREGIDOS: 5 y 4
                         except:
                             pass
         
@@ -1568,9 +1568,9 @@ async def obtener_estadisticas_completas():
         
         if len(datos_registro) > 1:
             for cliente in datos_registro[1:]:
-                if len(cliente) > 3 and cliente[3]:
+                if len(cliente) > 4 and cliente[4]:  # ÍNDICE CORREGIDO: 4
                     try:
-                        sellos_cliente = int(cliente[3])
+                        sellos_cliente = int(cliente[4])  # ÍNDICE CORREGIDO: 4
                         total_sellos += sellos_cliente
                         if sellos_cliente > 0:
                             clientes_con_sellos += 1
@@ -1579,7 +1579,7 @@ async def obtener_estadisticas_completas():
                     except:
                         pass
                 
-                if len(cliente) > 2 and cliente[2] == hoy:
+                if len(cliente) > 3 and cliente[3] == hoy:  # ÍNDICE CORREGIDO: 3 (fecha_registro)
                     clientes_nuevos_hoy += 1
         
         if len(datos_historial) > 1:
