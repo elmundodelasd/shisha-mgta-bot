@@ -27,7 +27,7 @@ SCOPE = ['https://www.googleapis.com/auth/spreadsheets',
 
 ADMIN_ID = '634092669'
 
-# Función para obtener hora de Venezuela (UTC-4)
+# Funciones mejoradas para hora Venezuela (UTC-4)
 def obtener_hora_venezuela():
     """Obtiene la hora actual de Venezuela (UTC-4)"""
     utc_now = datetime.utcnow()
@@ -35,30 +35,91 @@ def obtener_hora_venezuela():
     hora_venezuela = utc_now + venezuela_offset
     return hora_venezuela.strftime('%H:%M:%S')
 
-# Autenticación con Google Sheets desde variables de entorno
-try:
-    google_creds_json = os.getenv('GOOGLE_CREDENTIALS')
-    if not google_creds_json:
-        raise Exception("GOOGLE_CREDENTIALS no encontrada en variables de entorno")
-    
-    creds_dict = json.loads(google_creds_json)
-    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
-    client = gspread.authorize(creds)
-    
-    spreadsheet = client.open_by_key(SHEET_ID)
-    sheet_registro = spreadsheet.worksheet("registro_clientes")
-    sheet_vendedores = spreadsheet.worksheet("Vendedores")
-    sheet_historial = spreadsheet.worksheet("HistorialCompras")
-    sheet_estadisticas = spreadsheet.worksheet("estadísticas")
-    
-    print("✅ Conectado a Google Sheets - Todas las hojas inicializadas")
-    
-except Exception as e:
-    print(f"❌ Error conectando a Sheets: {e}")
-    sheet_registro = None
-    sheet_vendedores = None
-    sheet_historial = None
-    sheet_estadisticas = None
+def obtener_fecha_hora_venezuela():
+    """Obtiene fecha y hora actual de Venezuela (UTC-4)"""
+    utc_now = datetime.utcnow()
+    venezuela_offset = timedelta(hours=-4)
+    hora_venezuela = utc_now + venezuela_offset
+    return hora_venezuela.strftime('%Y-%m-%d %H:%M:%S')
+
+def obtener_fecha_venezuela():
+    """Obtiene solo la fecha actual de Venezuela (UTC-4)"""
+    utc_now = datetime.utcnow()
+    venezuela_offset = timedelta(hours=-4)
+    hora_venezuela = utc_now + venezuela_offset
+    return hora_venezuela.strftime('%Y-%m-%d')
+
+# Sistema de inicialización robusta de Google Sheets
+def inicializar_google_sheets():
+    """Inicializa Google Sheets con manejo robusto de errores"""
+    try:
+        google_creds_json = os.getenv('GOOGLE_CREDENTIALS')
+        if not google_creds_json:
+            raise Exception("GOOGLE_CREDENTIALS no encontrada en variables de entorno")
+        
+        creds_dict = json.loads(google_creds_json)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPE)
+        client = gspread.authorize(creds)
+        
+        spreadsheet = client.open_by_key(SHEET_ID)
+        print(f"✅ Conectado a Google Sheets principal - Hora Venezuela: {obtener_hora_venezuela()}")
+        
+        # Función auxiliar para inicializar hojas
+        def inicializar_hoja(nombre_hoja, headers=None):
+            try:
+                hoja = spreadsheet.worksheet(nombre_hoja)
+                print(f"✅ Hoja '{nombre_hoja}' encontrada")
+                
+                # Verificar si necesita encabezados
+                if headers:
+                    existing_data = hoja.get_all_values()
+                    if not existing_data or not any(existing_data):
+                        hoja.append_row(headers)
+                        print(f"✅ Encabezados agregados a '{nombre_hoja}'")
+                
+                return hoja
+            except gspread.exceptions.WorksheetNotFound:
+                print(f"📊 Creando hoja '{nombre_hoja}' automáticamente...")
+                hoja = spreadsheet.add_worksheet(title=nombre_hoja, rows="100", cols="10")
+                if headers:
+                    hoja.append_row(headers)
+                    print(f"✅ Hoja '{nombre_hoja}' creada con encabezados")
+                return hoja
+            except Exception as e:
+                print(f"⚠️ Error con hoja '{nombre_hoja}': {e}")
+                return None
+        
+        # Inicializar todas las hojas con sus encabezados
+        sheet_registro = inicializar_hoja("registro_clientes", 
+                                        ["user_id", "username", "nombre_completo", "fecha_registro", "sellos", "vendedor"])
+        
+        sheet_vendedores = inicializar_hoja("Vendedores", 
+                                          ["user_id", "nombre", "fecha_registro", "estado", "privilegios"])
+        
+        sheet_historial = inicializar_hoja("HistorialCompras", 
+                                         ["user_id", "fecha", "vendedor", "cantidad", "tipo"])
+        
+        # ✅ SOLO ACCEDER a estadísticas (ya existe) - NO CREAR
+        try:
+            sheet_estadisticas = spreadsheet.worksheet("estadísticas")
+            print("✅ Hoja 'estadísticas' encontrada (ya existente)")
+        except gspread.exceptions.WorksheetNotFound:
+            print("❌ Hoja 'estadísticas' no encontrada, pero debería existir")
+            sheet_estadisticas = None
+        except Exception as e:
+            print(f"⚠️ Error accediendo a hoja 'estadísticas': {e}")
+            sheet_estadisticas = None
+        
+        print("✅ Todas las hojas de Google Sheets inicializadas correctamente")
+        return sheet_registro, sheet_vendedores, sheet_historial, sheet_estadisticas
+        
+    except Exception as e:
+        print(f"❌ Error crítico conectando a Google Sheets: {e}")
+        print("⚠️ El bot continuará sin funcionalidad de base de datos")
+        return None, None, None, None
+
+# Inicializar Google Sheets
+sheet_registro, sheet_vendedores, sheet_historial, sheet_estadisticas = inicializar_google_sheets()
 
 # Almacenamiento temporal
 codigos_activos = {}
@@ -80,7 +141,7 @@ async def forzar_actualizacion_cache():
         'data': [],
         'timestamp': None
     }
-    print("🔄 Cache de vendedores forzado a actualizar")
+    print(f"🔄 Cache de vendedores forzado a actualizar - Hora: {obtener_hora_venezuela()}")
 
 def limpiar_duplicados_vendedores():
     """Limpia duplicados en la hoja de vendedores"""
@@ -168,7 +229,7 @@ async def obtener_vendedores_activos(forzar_actualizacion=False):
                     vendedor_dict[header] = ""
             
             estado = vendedor_dict.get('estado', 'SI')
-            username = vendedor_dict.get('username', '')
+            username = vendedor_dict.get('user_id', '')
             nombre = vendedor_dict.get('nombre', 'Sin nombre')
             privilegios = vendedor_dict.get('privilegios', 'normal')
             
@@ -196,7 +257,7 @@ async def obtener_vendedores_activos(forzar_actualizacion=False):
         vendedores_cache['data'] = vendedores_activos
         vendedores_cache['timestamp'] = datetime.now()
         
-        print(f"🎯 Total vendedores activos: {len(vendedores_activos)}")
+        print(f"🎯 Total vendedores activos: {len(vendedores_activos)} - Hora: {obtener_hora_venezuela()}")
         return vendedores_activos
         
     except Exception as e:
@@ -253,8 +314,8 @@ async def guardar_estadisticas_en_sheet():
         
         # Obtener datos actualizados
         vendedores_activos = await obtener_vendedores_activos()
-        datos_registro = sheet_registro.get_all_values()
-        datos_historial = sheet_historial.get_all_values()
+        datos_registro = sheet_registro.get_all_values() if sheet_registro else []
+        datos_historial = sheet_historial.get_all_values() if sheet_historial else []
         
         for vendedor in vendedores_activos:
             if vendedor['user_id'] == ADMIN_ID:
@@ -279,11 +340,11 @@ async def guardar_estadisticas_en_sheet():
                 sellos_activos,
                 sellos_inactivos,
                 total_ventas,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                obtener_fecha_hora_venezuela()  # ✅ Hora Venezuela
             ]
             sheet_estadisticas.append_row(fila_estadisticas)
         
-        print("✅ Estadísticas guardadas en Google Sheets")
+        print(f"✅ Estadísticas guardadas en Google Sheets - Hora: {obtener_hora_venezuela()}")
         return True
         
     except Exception as e:
@@ -334,7 +395,7 @@ async def mostrar_teclado_admin_completo(update: Update):
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    mensaje = "👑 PANEL ADMIN COMPLETO - Shisha MGTA"
+    mensaje = f"👑 PANEL ADMIN COMPLETO - Shisha MGTA\n⏰ Hora Venezuela: {obtener_hora_venezuela()}"
     
     await update.message.reply_text(mensaje, reply_markup=reply_markup)
 
@@ -348,7 +409,7 @@ async def mostrar_teclado_vendedor_premium(update: Update):
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    mensaje = "🌟 PANEL VENDEDOR PREMIUM - Shisha MGTA"
+    mensaje = f"🌟 PANEL VENDEDOR PREMIUM - Shisha MGTA\n⏰ Hora Venezuela: {obtener_hora_venezuela()}"
     
     await update.message.reply_text(mensaje, reply_markup=reply_markup)
 
@@ -361,7 +422,7 @@ async def mostrar_teclado_vendedor_normal(update: Update):
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    mensaje = "👨‍💼 PANEL VENDEDOR NORMAL - Shisha MGTA"
+    mensaje = f"👨‍💼 PANEL VENDEDOR NORMAL - Shisha MGTA\n⏰ Hora Venezuela: {obtener_hora_venezuela()}"
     
     await update.message.reply_text(mensaje, reply_markup=reply_markup)
 
@@ -377,14 +438,14 @@ async def mostrar_menu_principal(update: Update, user_id: str, nombre: str):
                 [KeyboardButton("📞 CONTACTAR")],
                 [KeyboardButton("🏠 INICIO")]
             ]
-            mensaje = f"👋 ¡Hola {nombre}! - Shisha MGTA\n\n¡Estás listo para acumular sellos!"
+            mensaje = f"👋 ¡Hola {nombre}! - Shisha MGTA\n⏰ Hora Venezuela: {obtener_hora_venezuela()}\n\n¡Estás listo para acumular sellos!"
         else:
             keyboard = [
                 [KeyboardButton("📝 REGISTRARME"), KeyboardButton("ℹ️ INFORMACIÓN")],
                 [KeyboardButton("📞 CONTACTAR")],
                 [KeyboardButton("🏠 INICIO")]
             ]
-            mensaje = f"👋 ¡Hola {nombre}! - Shisha MGTA\n\nRegístrate para empezar a acumular sellos"
+            mensaje = f"👋 ¡Hola {nombre}! - Shisha MGTA\n⏰ Hora Venezuela: {obtener_hora_venezuela()}\n\nRegístrate para empezar a acumular sellos"
         
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(mensaje, reply_markup=reply_markup)
@@ -474,7 +535,7 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
             # Forzar actualización de cache antes de mostrar estadísticas
             await forzar_actualizacion_cache()
             
-            # ✅ NUEVO: GUARDAR en la hoja primero
+            # ✅ GUARDAR en la hoja primero
             await guardar_estadisticas_en_sheet()
             
             estadisticas = await obtener_estadisticas_completas()
@@ -512,7 +573,7 @@ async def manejar_botones_avanzados(update: Update, context: ContextTypes.DEFAUL
     elif texto == "🔄 ACTUALIZAR CACHE":
         if await es_admin(user_id):
             await forzar_actualizacion_cache()
-            await update.message.reply_text("✅ **Cache actualizado correctamente**\n\nLos datos ahora están sincronizados con Google Sheets.")
+            await update.message.reply_text(f"✅ **Cache actualizado correctamente**\n\nLos datos ahora están sincronizados con Google Sheets.\n⏰ Hora: {obtener_hora_venezuela()}")
         else:
             await update.message.reply_text("❌ Solo el administrador puede actualizar el cache.")
     
@@ -571,7 +632,7 @@ async def procesar_agregar_vendedor_rapido(update: Update, context: ContextTypes
         nueva_fila = [
             nuevo_vendedor_id,
             nombre_vendedor,
-            datetime.now().strftime("%Y-%m-%d"),
+            obtener_fecha_venezuela(),  # ✅ Hora Venezuela
             "SI",
             privilegios
         ]
@@ -589,9 +650,10 @@ async def procesar_agregar_vendedor_rapido(update: Update, context: ContextTypes
             f"👤 **Nombre:** {nombre_vendedor.replace('_', ' ')}\n"
             f"🆔 **ID:** `{nuevo_vendedor_id}`\n"
             f"🎯 **Privilegios:** {privilegios.upper()}\n"
-            f"👥 **Total vendedores:** {len(vendedores_actualizados)}"
+            f"👥 **Total vendedores:** {len(vendedores_actualizados)}\n"
+            f"⏰ **Hora:** {obtener_hora_venezuela()}"
         )
-        print(f"✅ Vendedor {privilegios} agregado: {nombre_vendedor} ({nuevo_vendedor_id})")
+        print(f"✅ Vendedor {privilegios} agregado: {nombre_vendedor} ({nuevo_vendedor_id}) - Hora: {obtener_hora_venezuela()}")
         
     except Exception as e:
         print(f"❌ Error agregando vendedor: {e}")
@@ -632,7 +694,7 @@ async def procesar_agregar_cliente(update: Update, context: ContextTypes.DEFAULT
             cliente_id,
             "",
             nombre_cliente,
-            datetime.now().strftime("%Y-%m-%d"),
+            obtener_fecha_venezuela(),  # ✅ Hora Venezuela
             0,
             ""
         ]
@@ -643,10 +705,11 @@ async def procesar_agregar_cliente(update: Update, context: ContextTypes.DEFAULT
             f"✅ **Cliente agregado**\n\n"
             f"👤 **Nombre:** {nombre_cliente}\n"
             f"🆔 **ID:** `{cliente_id}`\n"
-            f"📅 **Fecha registro:** {datetime.now().strftime('%Y-%m-%d')}\n"
-            f"🏺 **Sellos iniciales:** 0"
+            f"📅 **Fecha registro:** {obtener_fecha_venezuela()}\n"
+            f"🏺 **Sellos iniciales:** 0\n"
+            f"⏰ **Hora:** {obtener_hora_venezuela()}"
         )
-        print(f"✅ Cliente agregado por admin: {nombre_cliente} ({cliente_id})")
+        print(f"✅ Cliente agregado por admin: {nombre_cliente} ({cliente_id}) - Hora: {obtener_hora_venezuela()}")
         
     except Exception as e:
         print(f"❌ Error agregando cliente: {e}")
@@ -685,9 +748,10 @@ async def procesar_eliminar_cliente(update: Update, context: ContextTypes.DEFAUL
                 f"✅ **Cliente eliminado**\n\n"
                 f"👤 **Nombre:** {nombre_cliente}\n"
                 f"🆔 **ID:** `{cliente_id}`\n"
-                f"🗑️ **Eliminado por:** Admin"
+                f"🗑️ **Eliminado por:** Admin\n"
+                f"⏰ **Hora:** {obtener_hora_venezuela()}"
             )
-            print(f"✅ Cliente eliminado por admin: {nombre_cliente} ({cliente_id})")
+            print(f"✅ Cliente eliminado por admin: {nombre_cliente} ({cliente_id}) - Hora: {obtener_hora_venezuela()}")
             
         except Exception as e:
             await update.message.reply_text(f"❌ Error eliminando cliente: {str(e)}")
@@ -712,7 +776,7 @@ async def mostrar_clientes_admin(update: Update):
         headers = todos_datos[0]
         datos_clientes = todos_datos[1:]
         
-        mensaje = "👥 **TODOS LOS CLIENTES - ADMIN**\n\n"
+        mensaje = f"👥 **TODOS LOS CLIENTES - ADMIN**\n⏰ Hora: {obtener_hora_venezuela()}\n\n"
         
         for i, cliente in enumerate(datos_clientes[-20:][::-1], 1):
             if len(cliente) >= 6:
@@ -729,7 +793,7 @@ async def mostrar_clientes_admin(update: Update):
         mensaje += f"📊 **Total clientes:** {total_clientes}"
         
         await update.message.reply_text(mensaje)
-        print(f"📋 Admin consultó lista completa de clientes")
+        print(f"📋 Admin consultó lista completa de clientes - Hora: {obtener_hora_venezuela()}")
         
     except Exception as e:
         print(f"❌ Error mostrando clientes admin: {e}")
@@ -769,7 +833,7 @@ async def mostrar_clientes_vendedor(update: Update, user_id: str):
             await update.message.reply_text("👥 **MIS CLIENTES**\n\n📭 No tienes clientes registrados aún.")
             return
         
-        mensaje = f"👥 **MIS CLIENTES - {nombre_vendedor}**\n\n"
+        mensaje = f"👥 **MIS CLIENTES - {nombre_vendedor}**\n⏰ Hora: {obtener_hora_venezuela()}\n\n"
         
         for i, cliente in enumerate(clientes_vendedor[-15:][::-1], 1):
             if len(cliente) >= 6:
@@ -789,7 +853,7 @@ async def mostrar_clientes_vendedor(update: Update, user_id: str):
         mensaje += f"• Sellos generados: {sum(int(c[4]) for c in clientes_vendedor if len(c) > 4 and c[4])}"
         
         await update.message.reply_text(mensaje)
-        print(f"📋 Vendedor {nombre_vendedor} consultó sus clientes")
+        print(f"📋 Vendedor {nombre_vendedor} consultó sus clientes - Hora: {obtener_hora_venezuela()}")
         
     except Exception as e:
         print(f"❌ Error mostrando clientes vendedor: {e}")
@@ -826,10 +890,10 @@ async def mostrar_mis_ventas(update: Update, user_id: str):
         
         if await es_admin(user_id):
             clientes_vendedor = datos_clientes
-            titulo = "💰 **TODAS LAS VENTAS - ADMIN**\n\n"
+            titulo = f"💰 **TODAS LAS VENTAS - ADMIN**\n⏰ Hora: {obtener_hora_venezuela()}\n\n"
         else:
             clientes_vendedor = [c for c in datos_clientes if len(c) > 5 and c[5] == nombre_vendedor]
-            titulo = f"💰 **MIS VENTAS - {nombre_vendedor}**\n\n"
+            titulo = f"💰 **MIS VENTAS - {nombre_vendedor}**\n⏰ Hora: {obtener_hora_venezuela()}\n\n"
         
         if not clientes_vendedor:
             await update.message.reply_text("💰 **MIS VENTAS**\n\n📭 No tienes clientes registrados aún.")
@@ -866,7 +930,7 @@ async def mostrar_mis_ventas(update: Update, user_id: str):
             mensaje += f"• Ingresos estimados: ${total_sellos * 12:,}"
         
         await update.message.reply_text(mensaje)
-        print(f"💰 {nombre_vendedor} consultó sus ventas")
+        print(f"💰 {nombre_vendedor} consultó sus ventas - Hora: {obtener_hora_venezuela()}")
         
     except Exception as e:
         print(f"❌ Error mostrando mis ventas: {e}")
@@ -946,9 +1010,10 @@ async def manejar_eliminar_vendedor(update: Update, context: ContextTypes.DEFAUL
             f"{privilegios_emoji} **Nombre:** {nombre_vendedor}\n"
             f"🆔 **ID:** `{vendedor_id}`\n"
             f"🎯 **Privilegios:** {privilegios_vendedor.upper()}\n"
-            f"👥 **Vendedores activos:** {len(vendedores_actualizados)}"
+            f"👥 **Vendedores activos:** {len(vendedores_actualizados)}\n"
+            f"⏰ **Hora:** {obtener_hora_venezuela()}"
         )
-        print(f"✅ Vendedor eliminado: {nombre_vendedor} ({vendedor_id})")
+        print(f"✅ Vendedor eliminado: {nombre_vendedor} ({vendedor_id}) - Hora: {obtener_hora_venezuela()}")
         
     except Exception as e:
         print(f"❌ Error eliminando vendedor: {e}")
@@ -962,7 +1027,8 @@ async def manejar_contacto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mensaje_contacto = (
         f"📞 **Contacta al Administrador**\n\n"
         f"👤 **Tu nombre:** {nombre}\n"
-        f"🆔 **Tu ID:** `{user_id}`\n\n"
+        f"🆔 **Tu ID:** `{user_id}`\n"
+        f"⏰ **Hora:** {obtener_hora_venezuela()}\n\n"
         f"💬 **Para ayuda o consultas:**\n"
         f"👉 @Alushi_1\n\n"
         f"📱 Contacta directamente al admin"
@@ -994,7 +1060,7 @@ async def registrar_usuario(update: Update, user_id: str, nombre: str):
             user_id,
             username,
             nombre_completo,
-            datetime.now().strftime("%Y-%m-%d"),
+            obtener_fecha_venezuela(),  # ✅ Hora Venezuela
             0,
             ""
         ])
@@ -1012,7 +1078,7 @@ async def registrar_usuario(update: Update, user_id: str, nombre: str):
         
         await update.message.reply_text(mensaje_bienvenida)
         await mostrar_menu_principal(update, user_id, nombre_completo)
-        print(f"✅ Nuevo usuario registrado: {nombre_completo} ({user_id})")
+        print(f"✅ Nuevo usuario registrado: {nombre_completo} ({user_id}) - Hora: {obtener_hora_venezuela()}")
         
     except Exception as e:
         print(f"❌ Error registrando usuario: {e}")
@@ -1074,14 +1140,15 @@ async def solicitar_compra(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(
             f"🛒 **Solicitud de Compra**\n\n"
-            f"👤 **Cliente:** {nombre_cliente}\n\n"
+            f"👤 **Cliente:** {nombre_cliente}\n"
+            f"⏰ **Hora:** {obtener_hora_venezuela()}\n\n"
             f"📋 **¿Qué vendedor te está atendiendo?**\n"
             f"(Selecciona uno de la lista)\n\n"
             f"💡 **El vendedor recibirá tu QR automáticamente**",
             reply_markup=reply_markup
         )
         
-        print(f"📦 Solicitud de compra iniciada por {nombre_cliente} ({user_id})")
+        print(f"📦 Solicitud de compra iniciada por {nombre_cliente} ({user_id}) - Hora: {obtener_hora_venezuela()}")
         
     except Exception as e:
         print(f"❌ Error en solicitud de compra: {e}")
@@ -1139,7 +1206,8 @@ async def manejar_seleccion_vendedor(update: Update, context: ContextTypes.DEFAU
                 f"✅ **Solicitud Completada**\n\n"
                 f"{mensaje_cliente}\n\n"
                 f"👤 **Cliente:** {nombre_cliente}\n"
-                f"📊 **Sellos actuales:** {sellos_actual}/10\n\n"
+                f"📊 **Sellos actuales:** {sellos_actual}/10\n"
+                f"⏰ **Hora:** {obtener_hora_venezuela()}\n\n"
                 f"⚡ **El vendedor ya tiene tu QR listo**\n"
                 f"¡Acércate para escanearlo! 🏺"
             )
@@ -1148,7 +1216,7 @@ async def manejar_seleccion_vendedor(update: Update, context: ContextTypes.DEFAU
         
         del solicitudes_activas[user_id_cliente]
         
-        print(f"✅ QR generado para {nombre_cliente}, vendedor: {vendedor_nombre}")
+        print(f"✅ QR generado para {nombre_cliente}, vendedor: {vendedor_nombre} - Hora: {obtener_hora_venezuela()}")
         
     except Exception as e:
         print(f"❌ Error en selección de vendedor: {e}")
@@ -1160,7 +1228,7 @@ async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE,
                                        nombre_cliente: str, user_id_cliente: str,
                                        vendedores_ids: list, vendedor_nombre: str,
                                        sellos_actual: int):
-    """Genera y envía QR automáticamente al vendedor - CORREGIDO"""
+    """Genera y envía QR automáticamente al vendedor - CON SISTEMA DE PRECIOS PRIVADO"""
     try:
         codigo_unico = f"compra_{uuid.uuid4().hex[:8]}_{int(datetime.now().timestamp())}"
         link_compra = f"https://t.me/Shishamgtabot?start={codigo_unico}"
@@ -1176,7 +1244,7 @@ async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE,
         nombre_archivo = f"qr_auto_{nombre_cliente.replace(' ', '_')}_{int(datetime.now().timestamp())}.png"
         img_qr.save(nombre_archivo)
         
-        # ✅ CORREGIDO: Texto sin errores y con hora Venezuela
+        # ✅ TEXTO CORREGIDO: Sin errores y con hora Venezuela
         hora_venezuela = obtener_hora_venezuela()
         
         mensaje_vendedor_base = (
@@ -1185,7 +1253,7 @@ async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE,
             f"📱 **Usuario:** {user_id_cliente}\n"
             f"📊 **Sellos actuales:** {sellos_actual}/10\n"
             f"🎯 **Faltan para premio:** {10 - sellos_actual}\n"
-            f"⏰ **Hora:** {hora_venezuela}\n"
+            f"⏰ **Hora Venezuela:** {hora_venezuela}\n"
             f"🔒 **Válido por:** 10 minutos\n\n"
             f"📋 **INSTRUCCIONES:**\n"
             f"1. Muestra este QR al cliente\n"
@@ -1198,7 +1266,7 @@ async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE,
             for vendedor_id in vendedores_ids:
                 try:
                     if vendedor_id.isdigit():
-                        # Verificar privilegios del vendedor para determinar si ver precios
+                        # ✅ SISTEMA DE PRECIOS PRIVADO: Verificar privilegios
                         vendedor_privilegios = await obtener_privilegios_usuario(vendedor_id)
                         
                         if vendedor_privilegios in ['admin', 'premium']:
@@ -1214,7 +1282,7 @@ async def generar_y_enviar_qr_automatico(context: ContextTypes.DEFAULT_TYPE,
                             caption=mensaje_vendedor
                         )
                         qrs_enviados += 1
-                        print(f"📨 QR enviado a vendedor {vendedor_id} (privilegios: {vendedor_privilegios})")
+                        print(f"📨 QR enviado a vendedor {vendedor_id} (privilegios: {vendedor_privilegios}) - Hora: {hora_venezuela}")
                         qr_file.seek(0)
                     else:
                         print(f"⚠️ ID de vendedor inválido: {vendedor_id}")
@@ -1266,7 +1334,7 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                     user_id,
                     username,
                     nombre_completo,
-                    datetime.now().strftime("%Y-%m-%d"),
+                    obtener_fecha_venezuela(),  # ✅ Hora Venezuela
                     1,
                     vendedor_actual
                 ])
@@ -1300,17 +1368,18 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                 if sheet_historial:
                     sheet_historial.append_row([
                         user_id,
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        obtener_fecha_hora_venezuela(),  # ✅ Hora Venezuela
                         vendedor_actual,
                         1,
                         "compra_normal"
                     ])
-                    print(f"📝 Historial guardado: {user_id} - {vendedor_actual}")
+                    print(f"📝 Historial guardado: {user_id} - {vendedor_actual} - Hora: {obtener_hora_venezuela()}")
             except Exception as e:
                 print(f"⚠️ Error guardando historial: {e}")
             
             try:
                 if vendedor_actual != "todos los vendedores" and vendedor_actual != "vendedor_desconocido":
+                    hora_actual = obtener_hora_venezuela()
                     mensaje_vendedor = (
                         f"✅ VENTA CONFIRMADA\n\n"
                         f"👤 Cliente: {nombre_cliente}\n"
@@ -1318,7 +1387,7 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                         f"🏺 Sello sumado: +1\n"
                         f"📊 Total acumulado: {sellos_actual}/10 sellos\n"
                         f"💰 Valor venta: $12\n"
-                        f"⏰ Hora: {obtener_hora_venezuela()}\n\n"
+                        f"⏰ Hora Venezuela: {hora_actual}\n\n"
                         f"¡Venta registrada exitosamente! 🎉"
                     )
                     
@@ -1330,7 +1399,7 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                                     chat_id=int(vendedor['user_id']),
                                     text=mensaje_vendedor
                                 )
-                                print(f"📨 Notificación enviada al vendedor {vendedor_actual}")
+                                print(f"📨 Notificación enviada al vendedor {vendedor_actual} - Hora: {hora_actual}")
                                 break
                             except Exception as e:
                                 print(f"❌ Error enviando notificación al vendedor: {e}")
@@ -1351,18 +1420,19 @@ async def procesar_compra_qr(update: Update, user_id: str, codigo_qr: str):
                     "📱 Muestra este mensaje al hacer tu pedido\n"
                     "¡Gracias por tu preferencia!"
                 )
-                print(f"🎉 Usuario {user_id} ganó 50% descuento")
+                print(f"🎉 Usuario {user_id} ganó 50% descuento - Hora: {obtener_hora_venezuela()}")
             else:
                 await update.message.reply_text(
                     f"✅ **Compra registrada exitosamente**\n\n"
                     f"🏺 Shisha MGTA agradece tu compra\n\n"
                     f"📊 **Sellos acumulados:** {sellos_actual}/10\n"
-                    f"🎯 **Te faltan:** {10 - sellos_actual}\n\n"
+                    f"🎯 **Te faltan:** {10 - sellos_actual}\n"
+                    f"⏰ **Hora:** {obtener_hora_venezuela()}\n\n"
                     f"¡Sigue disfrutando de nuestros servicios!"
                 )
             
             del codigos_activos[codigo_qr]
-            print(f"✅ Compra registrada via QR para usuario {user_id} con vendedor {vendedor_actual}")
+            print(f"✅ Compra registrada via QR para usuario {user_id} con vendedor {vendedor_actual} - Hora: {obtener_hora_venezuela()}")
             
         else:
             await update.message.reply_text("❌ QR inválido o ya utilizado.")
@@ -1384,7 +1454,7 @@ def limpiar_codigos_expirados():
         del codigos_activos[codigo]
     
     if expirados:
-        print(f"🧹 Códigos expirados limpiados: {len(expirados)}")
+        print(f"🧹 Códigos expirados limpiados: {len(expirados)} - Hora: {obtener_hora_venezuela()}")
     
     return len(expirados)
 
@@ -1403,7 +1473,8 @@ async def sellos(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sellos_actual = int(datos[4]) if len(datos) > 4 and datos[4] else 0
             
             await update.message.reply_text(
-                f"📊 Tu progreso en Shisha MGTA\n\n"
+                f"📊 Tu progreso en Shisha MGTA\n"
+                f"⏰ Hora: {obtener_hora_venezuela()}\n\n"
                 f"🏺 Sellos acumulados: {sellos_actual}/10\n"
                 f"🎯 Te faltan {10 - sellos_actual} sellos para tu 50% de descuento\n\n"
                 f"¡Sigue comprando para ganar tu premio!"
@@ -1420,7 +1491,8 @@ async def sellos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra información del programa"""
     mensaje = (
-        "🏺 **Shisha MGTA - Programa de Fidelidad**\n\n"
+        f"🏺 **Shisha MGTA - Programa de Fidelidad**\n"
+        f"⏰ Hora Venezuela: {obtener_hora_venezuela()}\n\n"
         "💎 **Cómo funciona:**\n"
         "1. Regístrate con 📝 REGISTRARME\n"
         "2. Usa 🛒 COMPRAS y selecciona tu vendedor\n"
@@ -1460,7 +1532,7 @@ async def historial_cliente(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("📭 No tienes compras registradas.")
             return
         
-        mensaje = "📋 **TU HISTORIAL DE COMPRAS**\n\n"
+        mensaje = f"📋 **TU HISTORIAL DE COMPRAS**\n⏰ Hora: {obtener_hora_venezuela()}\n\n"
         
         for compra in compras_cliente[-10:][::-1]:
             fecha = compra[1] if len(compra) > 1 else "Fecha desconocida"
@@ -1479,7 +1551,7 @@ async def historial_cliente(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mensaje += f"\n🎯 **Te faltan para premio:** {10 - (total_compras % 10)}"
         
         await update.message.reply_text(mensaje)
-        print(f"📋 {user_id} consultó su historial de compras")
+        print(f"📋 {user_id} consultó su historial de compras - Hora: {obtener_hora_venezuela()}")
         
     except Exception as e:
         print(f"❌ Error en historial: {e}")
@@ -1500,7 +1572,7 @@ async def listar_vendedores(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not vendedores:
             mensaje = "👥 **VENDEDORES ACTIVOS:**\n• No hay vendedores activos"
         else:
-            mensaje = "👥 **VENDEDORES ACTIVOS:**\n"
+            mensaje = f"👥 **VENDEDORES ACTIVOS**\n⏰ Hora: {obtener_hora_venezuela()}\n"
             for i, vendedor in enumerate(vendedores, 1):
                 privilegios_emoji = "👑" if vendedor['user_id'] == ADMIN_ID else ("🌟" if vendedor['privilegios'] == 'premium' else "👤")
                 es_admin_str = " (Admin)" if vendedor['user_id'] == ADMIN_ID else ""
@@ -1508,8 +1580,8 @@ async def listar_vendedores(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mensaje += f"{i}. {privilegios_emoji} {vendedor['nombre']} (ID: {vendedor['user_id']}){es_admin_str}{privilegios_str}\n"
         
         total_general = len(vendedores)
-        vendedores_normales = [v for v in vendedores if v['user_id'] != ADMIN_ID and v['privilegios'] == 'normal']
-        vendedores_premium = [v for v in vendedores if v['user_id'] != ADMIN_ID and v['privilegios'] == 'premium']
+        vendedores_normales = len([v for v in vendedores if v['user_id'] != ADMIN_ID and v['privilegios'] == 'normal'])
+        vendedores_premium = len([v for v in vendedores if v['user_id'] != ADMIN_ID and v['privilegios'] == 'premium'])
         total_eliminables = len(vendedores_normales) + len(vendedores_premium)
         
         mensaje += f"\n📊 **Total en sistema:** {total_general} vendedores"
@@ -1576,7 +1648,7 @@ async def generar_ranking_detallado():
         if not ranking_ordenado:
             return "📊 RANKING VENDEDORES\n📭 No hay ventas de vendedores activos"
         
-        mensaje_ranking = "🏆 TOP VENDEDORES ACTIVOS\n\n"
+        mensaje_ranking = f"🏆 TOP VENDEDORES ACTIVOS\n⏰ Hora: {obtener_hora_venezuela()}\n\n"
         
         emojis_podio = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
         
@@ -1643,7 +1715,7 @@ async def obtener_estadisticas_completas():
         total_sellos = 0
         clientes_con_sellos = 0
         clientes_cerca_premio = 0
-        hoy = datetime.now().strftime("%Y-%m-%d")
+        hoy = obtener_fecha_venezuela()  # ✅ Hora Venezuela
         clientes_nuevos_hoy = 0
         ventas_hoy = 0
         
@@ -1670,6 +1742,7 @@ async def obtener_estadisticas_completas():
         
         estadisticas = f"""
 🏆 ESTADÍSTICAS COMPLETAS - SHISHA MGTA
+⏰ Hora Venezuela: {obtener_hora_venezuela()}
 
 👥 CLIENTES
 • Total registrados: {total_clientes}
@@ -1696,47 +1769,12 @@ async def obtener_estadisticas_completas():
 • Premios próximos: {clientes_cerca_premio} clientes
 • Ingreso/día: ${(ventas_hoy * 12):,}
 • Ritmo: {ventas_hoy} ventas/hoy
-
-⏰ Actualizado: {obtener_hora_venezuela()}
 """
         
         return estadisticas
         
     except Exception as e:
         return f"❌ Error obteniendo estadísticas: {str(e)}"
-
-async def reset_system():
-    """🔄 LIMPIA TODOS LOS CACHES Y RESETEA SISTEMA - SOLO ADMIN"""
-    global vendedores_cache, codigos_activos, solicitudes_activas
-    
-    try:
-        vendedores_cache = {
-            'data': [],
-            'timestamp': None
-        }
-        
-        codigos_limpiados = len(codigos_activos)
-        codigos_activos = {}
-        
-        solicitudes_limpiadas = len(solicitudes_activas)
-        solicitudes_activas = {}
-        
-        usuarios_limpiados = len(usuarios_agregando_vendedor)
-        usuarios_agregando_vendedor.clear()
-        usuarios_agregando_cliente.clear()
-        usuarios_eliminando_cliente.clear()
-        
-        print("🔄 RESET SYSTEM ejecutado - Limpiando todos los caches")
-        
-        return {
-            'codigos_limpiados': codigos_limpiados,
-            'solicitudes_limpiadas': solicitudes_limpiadas,
-            'usuarios_limpiados': usuarios_limpiados
-        }
-        
-    except Exception as e:
-        print(f"❌ Error en reset system: {e}")
-        return None
 
 # HANDLERS PRINCIPALES
 if __name__ == "__main__":
@@ -1766,13 +1804,12 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler('ranking', generar_ranking_detallado))
     
     print("🚀 Shisha MGTA Bot - INICIADO CON TODAS LAS CORRECCIONES")
-    print("✅ CORRECCIONES IMPLEMENTADAS:")
-    print("   • 🕒 Hora Venezuela (UTC-4) correcta")
-    print("   • 📊 Hoja estadísticas inicializada")
-    print("   • 🔒 Precios ocultos para vendedores normales")
-    print("   • 📝 Textos QR corregidos (QR→OR, escane→escane, etc.)")
-    print("   • 💾 Función guardar_estadisticas_en_sheet()")
-    print("   • 🎯 Botón estadísticas ahora GUARDA datos")
+    print(f"✅ CORRECCIONES IMPLEMENTADAS - Hora Venezuela: {obtener_hora_venezuela()}")
+    print("   • 🕒 Hora Venezuela (UTC-4) COMPLETA en todo el sistema")
+    print("   • 📊 Acceso correcto a hoja 'estadísticas' existente")
+    print("   • 🔒 Sistema de precios privado funcionando")
+    print("   • 🛡️ Manejo robusto de errores")
+    print("   • ⚡ Estructura de ejecución corregida")
     print("📊 Conectado a Google Sheets - 4 hojas activas")
     print("🏺 Sistema de fidelidad activo")
     print("📱 QR únicos con hora Venezuela correcta")
@@ -1780,31 +1817,10 @@ if __name__ == "__main__":
     print("☁️ Listo para hosting 24/7")
     print("─" * 50)
     
-    # 🔧 MECANISMO ANTICONFLICTO MEJORADO
-    max_retries = 5
-    
-    for attempt in range(max_retries):
-        try:
-            print(f"🔄 Intento de conexión {attempt + 1}/{max_retries}")
-            app.run_polling(
-                drop_pending_updates=True,
-                close_loop=False,
-                stop_signals=None,
-                poll_interval=1.0
-            )
-            break
-            
-        except Exception as e:
-            error_msg = str(e)
-            print(f"❌ Error en intento {attempt + 1}: {error_msg}")
-            
-            if "Conflict" in error_msg or "getUpdates" in error_msg:
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 10
-                    print(f"⏳ Otra instancia detectada. Esperando {wait_time}s...")
-                    time.sleep(wait_time)
-                else:
-                    print("💥 Máximo de reintentos. Posible deployment duplicado.")
-                    break
-            else:
-                break
+    # ✅ ESTRUCTURA CORREGIDA: Ejecución continua simple
+    print(f"🔄 Iniciando bot - Hora Venezuela: {obtener_hora_venezuela()}")
+    app.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=None,
+        poll_interval=2.0
+    )
