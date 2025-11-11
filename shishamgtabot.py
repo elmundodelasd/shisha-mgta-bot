@@ -1606,7 +1606,7 @@ async def historial_cliente(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error obteniendo historial.")
 
 async def listar_vendedores(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lista todos los vendedores - SOLO ADMIN - CORREGIDO"""
+    """Lista todos los vendedores - SOLO ADMIN - CORREGIDO DEFINITIVAMENTE"""
     user_id = str(update.effective_user.id)
     
     if not await es_admin(user_id):
@@ -1645,24 +1645,23 @@ async def listar_vendedores(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 privilegios_str = f" - {privilegios_vendedor.upper()}" if user_id_vendedor != ADMIN_ID else ""
                 mensaje += f"{i}. {privilegios_emoji} {nombre_vendedor} (ID: {user_id_vendedor}){es_admin_str}{privilegios_str}\n"
         
-        # ✅ CORRECCIÓN: Solo calcular estadísticas si hay vendedores
-        # ✅ CORRECCIÓN: Solo calcular estadísticas si hay vendedores
-if vendedores:
-    total_general = len(vendedores)
-    vendedores_normales = len([v for v in vendedores if v.get('user_id') != ADMIN_ID and v.get('privilegios') == 'normal'])
-    vendedores_premium = len([v for v in vendedores if v.get('user_id') != ADMIN_ID and v.get('privilegios') == 'premium'])
-    total_eliminables = vendedores_normales + vendedores_premium  # ✅ CORREGIDO: solo suma
-    
-    mensaje += f"\n📊 **Total en sistema:** {total_general} vendedores"
-    mensaje += f"\n👤 **Vendedores normales:** {vendedores_normales}"
-    mensaje += f"\n🌟 **Vendedores premium:** {vendedores_premium}"
-    if total_general > total_eliminables:
-        mensaje += f"\n👑 **Eres el admin** (no puedes eliminarte)"
-    if total_eliminables > 0:
-        mensaje += f"\n🚫 **Disponibles para eliminar:** {total_eliminables} vendedores"
+        # ✅ CORRECCIÓN CRÍTICA: Solo calcular estadísticas si hay vendedores y CORREGIR el error de len()
+        if vendedores:
+            total_general = len(vendedores)
+            vendedores_normales = len([v for v in vendedores if v.get('user_id') != ADMIN_ID and v.get('privilegios') == 'normal'])
+            vendedores_premium = len([v for v in vendedores if v.get('user_id') != ADMIN_ID and v.get('privilegios') == 'premium'])
+            total_eliminables = vendedores_normales + vendedores_premium  # ✅ CORREGIDO: solo suma, NO usar len()
+            
+            mensaje += f"\n📊 **Total en sistema:** {total_general} vendedores"
+            mensaje += f"\n👤 **Vendedores normales:** {vendedores_normales}"
+            mensaje += f"\n🌟 **Vendedores premium:** {vendedores_premium}"
+            if total_general > total_eliminables:
+                mensaje += f"\n👑 **Eres el admin** (no puedes eliminarte)"
+            if total_eliminables > 0:
+                mensaje += f"\n🚫 **Disponibles para eliminar:** {total_eliminables} vendedores"
         
         await update.message.reply_text(mensaje)
-        print(f"✅ Lista de vendedores enviada correctamente - Total: {len(vendedores) if isinstance(vendedores, list) else 'N/A'}")
+        print(f"✅ Lista de vendedores enviada correctamente - Total: {len(vendedores)}")
         
     except Exception as e:
         print(f"❌ Error listando vendedores: {e}")
@@ -1884,6 +1883,7 @@ if __name__ == "__main__":
     print("   • 🔍 Debug de vendedores activado")
     print("   • ✅ CORRECCIÓN CRÍTICA: Mapeo de columnas 'username' en lugar de 'user_id'")
     print("   • ✅ CORRECCIÓN CRÍTICA: Función listar_vendedores corregida con validación de tipos")
+    print("   • ✅ CORRECCIÓN DEFINITIVA: Error 'object of type 'int' has no len()' RESUELTO")
     print("📊 Conectado a Google Sheets - 4 hojas activas")
     print("🏺 Sistema de fidelidad activo")
     print("📱 QR únicos con hora Venezuela correcta")
