@@ -1646,19 +1646,20 @@ async def listar_vendedores(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 mensaje += f"{i}. {privilegios_emoji} {nombre_vendedor} (ID: {user_id_vendedor}){es_admin_str}{privilegios_str}\n"
         
         # ✅ CORRECCIÓN: Solo calcular estadísticas si hay vendedores
-        if vendedores:
-            total_general = len(vendedores)
-            vendedores_normales = len([v for v in vendedores if v.get('user_id') != ADMIN_ID and v.get('privilegios') == 'normal'])
-            vendedores_premium = len([v for v in vendedores if v.get('user_id') != ADMIN_ID and v.get('privilegios') == 'premium'])
-            total_eliminables = len(vendedores_normales) + len(vendedores_premium)
-            
-            mensaje += f"\n📊 **Total en sistema:** {total_general} vendedores"
-            mensaje += f"\n👤 **Vendedores normales:** {vendedores_normales}"
-            mensaje += f"\n🌟 **Vendedores premium:** {vendedores_premium}"
-            if total_general > total_eliminables:
-                mensaje += f"\n👑 **Eres el admin** (no puedes eliminarte)"
-            if total_eliminables > 0:
-                mensaje += f"\n🚫 **Disponibles para eliminar:** {total_eliminables} vendedores"
+        # ✅ CORRECCIÓN: Solo calcular estadísticas si hay vendedores
+if vendedores:
+    total_general = len(vendedores)
+    vendedores_normales = len([v for v in vendedores if v.get('user_id') != ADMIN_ID and v.get('privilegios') == 'normal'])
+    vendedores_premium = len([v for v in vendedores if v.get('user_id') != ADMIN_ID and v.get('privilegios') == 'premium'])
+    total_eliminables = vendedores_normales + vendedores_premium  # ✅ CORREGIDO: solo suma
+    
+    mensaje += f"\n📊 **Total en sistema:** {total_general} vendedores"
+    mensaje += f"\n👤 **Vendedores normales:** {vendedores_normales}"
+    mensaje += f"\n🌟 **Vendedores premium:** {vendedores_premium}"
+    if total_general > total_eliminables:
+        mensaje += f"\n👑 **Eres el admin** (no puedes eliminarte)"
+    if total_eliminables > 0:
+        mensaje += f"\n🚫 **Disponibles para eliminar:** {total_eliminables} vendedores"
         
         await update.message.reply_text(mensaje)
         print(f"✅ Lista de vendedores enviada correctamente - Total: {len(vendedores) if isinstance(vendedores, list) else 'N/A'}")
